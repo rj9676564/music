@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect, memo, useCallback } from "react";
+import { useState, useRef, useEffect, memo, useCallback, useMemo } from "react";
 import { parseLrc, parseSrt } from "./utils/lrcParser";
 import type { LyricLine } from "./utils/lrcParser";
 import "./App.css";
 
 const LINE_STYLE: React.CSSProperties = {
   lineHeight: "1.6",
-  padding: "12px 0",
+  padding: "14px 0",
   boxSizing: "border-box",
 };
 
@@ -15,6 +15,7 @@ const StaticLine = memo(({ text, color }: { text: string; color: string }) => (
   </div>
 ));
 
+// 1. UPGRADED: Word-Focus Karaoke Engine
 const ActiveKaraokeLine = memo(
   ({
     text,
@@ -25,7 +26,8 @@ const ActiveKaraokeLine = memo(
     progress: number;
     activeColor: string;
   }) => {
-    const words = text.split(/(\s+)/);
+    // Regex to split words but keep spaces
+    const parts = useMemo(() => text.split(/(\s+)/), [text]);
     const totalChars = text.length || 1;
     let charOffset = 0;
 
@@ -37,18 +39,35 @@ const ActiveKaraokeLine = memo(
           wordBreak: "normal",
           overflowWrap: "break-word",
         }}>
-        {words.map((word, wordIdx) => {
+        {parts.map((word, wordIdx) => {
           const wordChars = Array.from(word);
-          const wordElem = (
+          const wordLen = wordChars.length;
+          const wordStartProgress = charOffset / totalChars;
+          const wordEndProgress = (charOffset + wordLen) / totalChars;
+
+          // Check if this specific word is currently being focused
+          const isWordFocused =
+            progress >= wordStartProgress && progress < wordEndProgress;
+          const isWordFinished = progress >= wordEndProgress;
+
+          const element = (
             <span
               key={wordIdx}
-              style={{ whiteSpace: "nowrap", display: "inline-block" }}>
+              style={{
+                whiteSpace: "nowrap",
+                display: "inline-block",
+                transition:
+                  "transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+                transform: isWordFocused ? "scale(1.15)" : "scale(1)", // Slight pop effect for the current word
+                zIndex: isWordFocused ? 10 : 1,
+                position: "relative",
+                margin: "0 1px",
+              }}>
               {wordChars.map((char, i) => {
                 const globalIdx = charOffset + i;
                 const start = globalIdx / totalChars;
                 const end = (globalIdx + 1) / totalChars;
                 let p = 0;
-                // Ensure progress remains 1 if we've passed the line's time
                 if (progress >= end) p = 1;
                 else if (progress <= start) p = 0;
                 else p = (progress - start) / (end - start);
@@ -60,6 +79,9 @@ const ActiveKaraokeLine = memo(
                       position: "relative",
                       display: "inline-block",
                       whiteSpace: "pre",
+                      filter: isWordFocused
+                        ? `drop-shadow(0 0 8px ${activeColor}80)`
+                        : "none",
                     }}>
                     {p > 0 && (
                       <span
@@ -72,6 +94,7 @@ const ActiveKaraokeLine = memo(
                           color: activeColor,
                           zIndex: 1,
                           whiteSpace: "pre",
+                          fontWeight: isWordFocused ? 900 : 700,
                         }}>
                         {char}
                       </span>
@@ -82,8 +105,8 @@ const ActiveKaraokeLine = memo(
               })}
             </span>
           );
-          charOffset += wordChars.length;
-          return wordElem;
+          charOffset += wordLen;
+          return element;
         })}
       </div>
     );
@@ -106,7 +129,7 @@ function App() {
       fontSize: 32,
       color: "#ffffff",
       activeColor: "#ffeb3b",
-      backgroundColor: "rgba(0,0,0,0.3)",
+      backgroundColor: "rgba(0, 0, 0, 0.3)",
       showDesktopLyric: true,
     };
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
@@ -220,7 +243,6 @@ function App() {
     restore();
   }, []);
 
-  // REFINED SYNC: Sticky Focus on Musical Gaps
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -229,9 +251,6 @@ function App() {
     const sync = () => {
       const time = audio.currentTime;
       setCurrentTime(time);
-
-      // STICKY: Find the last line that should have started
-      // This ensures we don't drop to index -1 during background music
       const index = lyrics.findLastIndex((l) => time >= l.time);
 
       if (index !== -1) {
@@ -241,7 +260,6 @@ function App() {
         }
 
         const l = lyrics[index];
-        // Calculate progress based on real duration or gap to next
         const dur =
           l.endTime !== undefined
             ? l.endTime - l.time
@@ -591,8 +609,8 @@ function App() {
               ref={lyricListRef}
               style={{ maxHeight: "200px" }}>
               {lyrics.map((line, index) => {
+                const isPast = index < activeIndex;
                 if (index === activeIndex) {
-                  // Re-calculate local progress for renderer
                   const l = lyrics[index];
                   const dur =
                     l.endTime !== undefined
@@ -618,9 +636,7 @@ function App() {
                     key={index}
                     text={line.text}
                     color={
-                      index < activeIndex
-                        ? settings.activeColor
-                        : "rgba(255,255,255,0.4)"
+                      isPast ? settings.activeColor : "rgba(255,255,255,0.4)"
                     }
                   />
                 );
