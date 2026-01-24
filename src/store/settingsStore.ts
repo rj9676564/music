@@ -6,6 +6,7 @@ interface PlayerSettings {
   color: string;
   activeColor: string;
   backgroundColor: string;
+  shadowOpacity: number;
   showDesktopLyric: boolean;
 }
 
@@ -20,6 +21,7 @@ export const useSettingsStore = create<SettingsState>()(
       color: '#ffffff',
       activeColor: '#ffeb3b',
       backgroundColor: 'rgba(0, 0, 0, 0)',
+      shadowOpacity: 0.1,
       showDesktopLyric: true,
       updateSettings: (newSettings) => {
         console.log('--- Settings Store Updating ---', newSettings);

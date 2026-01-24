@@ -565,7 +565,6 @@ function App() {
                 </label>{" "}
               </div>
               <div className="setting-item">
-                {" "}
                 <label>字号: {settings.fontSize}px</label>{" "}
                 <input
                   type="range"
@@ -578,6 +577,25 @@ function App() {
                     })
                   }
                 />{" "}
+              </div>
+              <div className="setting-item">
+                <label>
+                  桌面歌词阴影:{" "}
+                  {Math.round((settings.shadowOpacity ?? 0.5) * 100)}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={settings.shadowOpacity ?? 0.5}
+                  onChange={(e) =>
+                    settings.updateSettings({
+                      shadowOpacity: parseFloat(e.target.value),
+                    })
+                  }
+                  style={{ width: "100%" }}
+                />
               </div>
             </div>
             <div className="setting-grid colors">

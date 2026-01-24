@@ -79,6 +79,7 @@ const LyricApp = () => {
     color: "#ffffff",
     activeColor: "#ffeb3b",
     backgroundColor: "rgba(0, 0, 0, 0.4)",
+    shadowOpacity: 0.5,
   });
   const [isHovered, setIsHovered] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -204,7 +205,7 @@ const LyricApp = () => {
                 color: settings.color,
                 textShadow:
                   isActuallyTransparent && !isHovered
-                    ? "0 1px 3px rgba(0,0,0,0.5)"
+                    ? `0 1px 3px rgba(0,0,0,${settings.shadowOpacity})`
                     : "none",
               }}>
               {lineWords.map((word, wordIdx) => {
@@ -221,7 +222,7 @@ const LyricApp = () => {
                     color={settings.color}
                     textShadow={
                       isActuallyTransparent && !isHovered
-                        ? "0 1px 3px rgba(0,0,0,0.5)"
+                        ? `0 1px 3px rgba(0,0,0,${settings.shadowOpacity})`
                         : "none"
                     }
                   />
