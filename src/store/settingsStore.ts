@@ -19,7 +19,7 @@ export const useSettingsStore = create<SettingsState>()(
       fontSize: 32,
       color: '#ffffff',
       activeColor: '#ffeb3b',
-      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+      backgroundColor: 'rgba(0, 0, 0, 0)',
       showDesktopLyric: true,
       updateSettings: (newSettings) => {
         console.log('--- Settings Store Updating ---', newSettings);

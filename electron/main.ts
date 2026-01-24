@@ -69,7 +69,7 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       webSecurity: true, 
-    },
+      backgroundThrottling: false,    },
   })
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -299,7 +299,7 @@ ipcMain.on('toggle-lyric-window', (_event, visible: boolean) => {
 })
 
 // AI Transcription Service (Buzz-like integration with N100 server)
-const WHISPER_SERVER_URL = 'http://localhost:9000' // Change to your N100 IP if needed
+const WHISPER_SERVER_URL = 'http://d.mrlb.top:9999'
 
 ipcMain.handle('transcribe-audio', async (_event, audioPath: string) => {
   console.log('Starting AI Transcription for:', audioPath)

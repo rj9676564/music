@@ -8919,7 +8919,8 @@ function createWindow() {
     titleBarStyle: "hidden",
     webPreferences: {
       preload: path.join(__dirname$1, "preload.mjs"),
-      webSecurity: true
+      webSecurity: true,
+      backgroundThrottling: false
     }
   });
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -9106,7 +9107,7 @@ ipcMain.on("toggle-lyric-window", (_event, visible) => {
     }
   }
 });
-const WHISPER_SERVER_URL = "http://localhost:9000";
+const WHISPER_SERVER_URL = "http://d.mrlb.top:9999";
 ipcMain.handle("transcribe-audio", async (_event, audioPath) => {
   console.log("Starting AI Transcription for:", audioPath);
   if (!fs.existsSync(audioPath)) {

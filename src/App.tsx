@@ -270,6 +270,29 @@ function App() {
     }
   }, [setAudio, setLyrics, setCurrentTime]);
 
+  const handleOpenLyric = useCallback(async () => {
+    if (!window.ipcRenderer) return;
+    const file = await window.ipcRenderer.invoke("open-file", [
+      { name: "Lyrics", extensions: ["lrc", "srt"] },
+    ]);
+    if (file) {
+      const content = await window.ipcRenderer.invoke(
+        "read-file-content",
+        file.path,
+      );
+      if (content) {
+        setLyrics(
+          file.path.toLowerCase().endsWith(".srt")
+            ? parseSrt(content)
+            : parseLrc(content),
+        );
+        if (audioPath) {
+          localStorage.setItem(`lyric-${audioPath}`, file.path);
+        }
+      }
+    }
+  }, [audioPath, setLyrics]);
+
   const togglePlay = useCallback(() => {
     if (!audioPath) {
       handleOpenMusic();
@@ -296,7 +319,7 @@ function App() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    let requestID: number;
+    let intervalID: NodeJS.Timeout;
     const sync = () => {
       const time = audio.currentTime;
       if (Math.abs(time - usePlayerStore.getState().currentTime) > 0.05)
@@ -321,7 +344,7 @@ function App() {
         );
         if (
           index !== lastIpcUpdateRef.current.index ||
-          Math.abs(progress - lastIpcUpdateRef.current.progress) > 0.03
+          Math.abs(progress - lastIpcUpdateRef.current.progress) > 0.01
         ) {
           window.ipcRenderer?.send("update-lyric", {
             text: currentLyrics[index].text,
@@ -330,11 +353,9 @@ function App() {
           lastIpcUpdateRef.current = { index, progress };
         }
       }
-      if (usePlayerStore.getState().isPlaying)
-        requestID = requestAnimationFrame(sync);
     };
-    if (isPlaying) requestID = requestAnimationFrame(sync);
-    return () => cancelAnimationFrame(requestID);
+    if (isPlaying) intervalID = setInterval(sync, 16);
+    return () => clearInterval(intervalID);
   }, [
     isPlaying,
     settings.showDesktopLyric,
@@ -727,7 +748,7 @@ function App() {
                 </svg>
               )}
             </button>
-            <button className="nav-btn" onClick={() => {}}>
+            <button className="nav-btn" onClick={handleOpenLyric}>
               <svg
                 viewBox="0 0 24 24"
                 fill="none"

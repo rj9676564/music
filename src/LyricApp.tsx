@@ -9,6 +9,7 @@ const KaraokeWord = memo(
     currentProgress,
     activeColor,
     color,
+    textShadow,
   }: any) => {
     const isFocused =
       currentProgress >= startProgress && currentProgress < endProgress;
@@ -42,6 +43,7 @@ const KaraokeWord = memo(
                 display: "inline-block",
                 color: color,
                 whiteSpace: "pre",
+                // textShadow: textShadow,
               }}>
               {p > 0 && (
                 <span
@@ -49,6 +51,7 @@ const KaraokeWord = memo(
                     position: "absolute",
                     top: 0,
                     left: 0,
+
                     width: `${p * 105}%`,
                     overflow: "hidden",
                     color: activeColor,
@@ -216,6 +219,11 @@ const LyricApp = () => {
                     currentProgress={lyricData.progress}
                     activeColor={settings.activeColor}
                     color={settings.color}
+                    textShadow={
+                      isActuallyTransparent && !isHovered
+                        ? "0 1px 3px rgba(0,0,0,0.5)"
+                        : "none"
+                    }
                   />
                 );
                 currentOffset += word.length;
