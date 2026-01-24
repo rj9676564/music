@@ -1,7 +1,9 @@
 {
   "name": "molten-spicule",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "A futuristic liquid-metal style music player with AI lyrics support.",
+  "author": "Laibin <rj9676564@gmail.com>",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -24,6 +26,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "electron": "^40.0.0",
+    "electron-builder": "^26.4.0",
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",

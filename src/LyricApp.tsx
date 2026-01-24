@@ -43,7 +43,7 @@ const KaraokeWord = memo(
                 display: "inline-block",
                 color: color,
                 whiteSpace: "pre",
-                // textShadow: textShadow,
+                textShadow: textShadow,
               }}>
               {p > 0 && (
                 <span
