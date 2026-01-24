@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import axios from 'axios'
+import FormData from 'form-data'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const boundsPath = path.join(app.getPath('userData'), 'lyric-bounds.json')
@@ -59,9 +61,10 @@ let lyricWin: BrowserWindow | null
 
 function createWindow() {
   win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, 'vite.svg'),
+    icon: path.join(process.env.VITE_PUBLIC, 'icon.png'),
     width: 530,
     height: 820,
+    title: 'Molten Music',
     titleBarStyle: 'hidden',
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
@@ -79,6 +82,18 @@ function createWindow() {
   win.on('closed', () => {
     win = null
   })
+
+  // Disable F12/DevTools in production
+  win.webContents.on('before-input-event', (event, input) => {
+    if (app.isPackaged) {
+      const isDevToolsShortcut = 
+        input.key === 'F12' || 
+        ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i');
+      if (isDevToolsShortcut) {
+        event.preventDefault();
+      }
+    }
+  });
 }
 
 function createLyricWindow() {
@@ -142,6 +157,18 @@ function createLyricWindow() {
     console.log('Lyric Window closed')
     lyricWin = null
   })
+
+  // Disable F12/DevTools in production
+  lyricWin.webContents.on('before-input-event', (event, input) => {
+    if (app.isPackaged) {
+      const isDevToolsShortcut = 
+        input.key === 'F12' || 
+        ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i');
+      if (isDevToolsShortcut) {
+        event.preventDefault();
+      }
+    }
+  });
 }
 
 app.on('window-all-closed', () => {
@@ -267,6 +294,58 @@ ipcMain.on('toggle-lyric-window', (_event, visible: boolean) => {
   } else {
     if (lyricWin && !lyricWin.isDestroyed()) {
       lyricWin.hide()
+    }
+  }
+})
+
+// AI Transcription Service (Buzz-like integration with N100 server)
+const WHISPER_SERVER_URL = 'http://localhost:9000' // Change to your N100 IP if needed
+
+ipcMain.handle('transcribe-audio', async (_event, audioPath: string) => {
+  console.log('Starting AI Transcription for:', audioPath)
+  
+  if (!fs.existsSync(audioPath)) {
+    return { success: false, message: '文件不存在' }
+  }
+
+  try {
+    const formData = new FormData()
+    formData.append('audio_file', fs.createReadStream(audioPath))
+
+    // Call N100 Whisper API
+    // Task: transcribe, Language: auto, Output format: srt
+    const apiUrl = `${WHISPER_SERVER_URL}/asr?task=transcribe&output=srt`
+    console.log('Uploading to:', apiUrl)
+
+    const response = await axios.post(apiUrl, formData, {
+      headers: {
+        ...formData.getHeaders(),
+      },
+      // Timeout 15 minutes for long audio
+      timeout: 1000 * 60 * 15
+    })
+
+    if (response.data) {
+      // Success! Path to save: same folder as audio, same name but .srt
+      const ext = path.extname(audioPath)
+      const srtPath = audioPath.substring(0, audioPath.length - ext.length) + '.srt'
+      
+      fs.writeFileSync(srtPath, response.data)
+      console.log('SRT saved to:', srtPath)
+      
+      return { 
+        success: true, 
+        message: '转录成功！歌词已生成并保存到音频所在目录。',
+        srtContent: response.data 
+      }
+    }
+
+    return { success: false, message: '服务器未返回有效内容' }
+  } catch (error: any) {
+    console.error('Transcription error:', error)
+    return { 
+      success: false, 
+      message: `转录失败: ${error.message}. 请检查 N100 上的 Docker 服务是否在运行且端口 9000 已开放。` 
     }
   }
 })

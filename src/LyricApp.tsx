@@ -1,166 +1,155 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, memo } from "react";
+
+// Optimized Word Component
+const KaraokeWord = memo(
+  ({
+    word,
+    startProgress,
+    endProgress,
+    currentProgress,
+    activeColor,
+    color,
+  }: any) => {
+    const isFocused =
+      currentProgress >= startProgress && currentProgress < endProgress;
+
+    return (
+      <span
+        style={{
+          whiteSpace: "nowrap",
+          display: "inline-block",
+          transform: isFocused ? "scale(1.1)" : "scale(1)",
+          transition: "transform 0.1s ease-out",
+          margin: "0 1px",
+        }}>
+        {Array.from(word).map((char: any, i: number) => {
+          const charLen = word.length || 1;
+          const charStart =
+            startProgress + (i / charLen) * (endProgress - startProgress);
+          const charEnd =
+            startProgress + ((i + 1) / charLen) * (endProgress - startProgress);
+
+          let p = 0;
+          if (currentProgress >= charEnd) p = 1;
+          else if (currentProgress <= charStart) p = 0;
+          else p = (currentProgress - charStart) / (charEnd - charStart);
+
+          return (
+            <span
+              key={i}
+              style={{
+                position: "relative",
+                display: "inline-block",
+                color: color,
+                whiteSpace: "pre",
+              }}>
+              {p > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: `${p * 105}%`,
+                    overflow: "hidden",
+                    color: activeColor,
+                    zIndex: 1,
+                  }}>
+                  {char}
+                </span>
+              )}
+              {char}
+            </span>
+          );
+        })}
+      </span>
+    );
+  },
+);
 
 const LyricApp = () => {
   const [lyricData, setLyricData] = useState({
-    text: "桌面歌词准备就绪...",
+    text: "等待播放...",
     progress: 0,
   });
   const [settings, setSettings] = useState({
     fontSize: 32,
     color: "#ffffff",
     activeColor: "#ffeb3b",
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    glowColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
   });
-
+  const [isHovered, setIsHovered] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   const lastHeightRef = useRef(0);
 
   useEffect(() => {
     if (!window.ipcRenderer) return;
 
-    const removeLyricListener = window.ipcRenderer.on(
-      "update-lyric",
-      (_event, data) => {
-        // Optimization: Only update state if data is different
-        setLyricData((prev) => {
-          if (typeof data === "string") {
-            if (prev.text === data && prev.progress === 0) return prev;
-            return { text: data, progress: 0 };
-          }
-          if (
-            prev.text === data.text &&
-            Math.abs(prev.progress - data.progress) < 0.001
-          )
-            return prev;
-          return data;
-        });
-      },
-    );
+    const lyricHandler = (_event: any, data: any) => {
+      setLyricData((prev) => {
+        if (typeof data === "string")
+          return prev.text === data ? prev : { text: data, progress: 0 };
+        if (
+          prev.text === data.text &&
+          Math.abs(prev.progress - data.progress) < 0.005
+        )
+          return prev;
+        return data;
+      });
+    };
 
-    const removeSettingsListener = window.ipcRenderer.on(
-      "update-settings",
-      (_event, newSettings) => {
-        setSettings((prev) => ({ ...prev, ...newSettings }));
-      },
-    );
+    const settingsHandler = (_event: any, s: any) => {
+      setSettings((prev) => ({ ...prev, ...s }));
+    };
+
+    window.ipcRenderer.on("update-lyric", lyricHandler);
+    window.ipcRenderer.on("update-settings", settingsHandler);
 
     return () => {
-      if (typeof removeLyricListener === "function") removeLyricListener();
-      if (typeof removeSettingsListener === "function")
-        removeSettingsListener();
+      if (window.ipcRenderer.off) {
+        window.ipcRenderer.off("update-lyric", lyricHandler);
+        window.ipcRenderer.off("update-settings", settingsHandler);
+      }
     };
   }, []);
 
-  // Use ResizeObserver instead of setInterval for performance
   useEffect(() => {
-    const updateWindowHeight = () => {
+    const updateHeight = () => {
       if (boxRef.current && window.ipcRenderer) {
-        const contentHeight = boxRef.current.getBoundingClientRect().height;
-        const targetHeight = Math.ceil(contentHeight + 24);
-
-        if (Math.abs(targetHeight - lastHeightRef.current) > 3) {
-          window.ipcRenderer.send("resize-lyric-window", {
-            height: targetHeight,
-          });
-          lastHeightRef.current = targetHeight;
+        const h = Math.ceil(boxRef.current.getBoundingClientRect().height + 30);
+        if (Math.abs(h - lastHeightRef.current) > 4 && h > 20) {
+          window.ipcRenderer.send("resize-lyric-window", { height: h });
+          lastHeightRef.current = h;
         }
       }
     };
-
-    const observer = new ResizeObserver(updateWindowHeight);
-    if (boxRef.current) observer.observe(boxRef.current);
-    return () => observer.disconnect();
+    updateHeight();
+    const obs = new ResizeObserver(updateHeight);
+    if (boxRef.current) obs.observe(boxRef.current);
+    return () => obs.disconnect();
   }, [lyricData.text, settings.fontSize]);
 
   const lines = useMemo(() => lyricData.text.split("\n"), [lyricData.text]);
 
-  const renderKaraokeLine = (
-    text: string,
-    progress: number,
-    isMain: boolean,
-  ) => {
-    // Memoizing the word split would be better, but tricky inside a render function
-    const words = text.split(/(\s+)/);
-    const totalChars = text.length || 1;
-    let charIndexOffset = 0;
+  const isActuallyTransparent = settings.backgroundColor === "rgba(0,0,0,0)";
 
-    const fontSize = isMain ? settings.fontSize : settings.fontSize * 0.7;
-    const isTransparent = settings.backgroundColor === "rgba(0,0,0,0)";
-    const unifiedShadowFilter = isTransparent
-      ? "none"
-      : "drop-shadow(0px 2px 4px rgba(0,0,0,0.8)) drop-shadow(0px 0px 8px rgba(0,0,0,0.4))";
+  const effectiveBg = useMemo(() => {
+    if (isActuallyTransparent) {
+      return isHovered ? "rgba(0, 0, 0, 0.5)" : "transparent";
+    }
+    return settings.backgroundColor;
+  }, [isHovered, settings.backgroundColor, isActuallyTransparent]);
 
-    return (
-      <div
-        style={{
-          fontSize: `${fontSize}px`,
-          fontWeight: isMain ? 700 : 500,
-          opacity: isMain ? 1 : 0.85,
-          lineHeight: 1.3,
-          display: "inline-block",
-          textAlign: "center",
-          maxWidth: "100%",
-          letterSpacing: "0.5px",
-          filter: unifiedShadowFilter,
-          WebkitFilter: unifiedShadowFilter,
-          willChange: "filter", // Hardware acceleration hint
-        }}>
-        {words.map((word, wordIdx) => {
-          const wordChars = Array.from(word);
-          const element = (
-            <span
-              key={wordIdx}
-              style={{ whiteSpace: "nowrap", display: "inline-block" }}>
-              {wordChars.map((char, i) => {
-                const globalIdx = charIndexOffset + i;
-                const charStart = globalIdx / totalChars;
-                const charEnd = (globalIdx + 1) / totalChars;
+  const effectiveBlur = useMemo(() => {
+    if (isActuallyTransparent) {
+      return isHovered ? "blur(15px)" : "none";
+    }
+    return "blur(15px)";
+  }, [isHovered, isActuallyTransparent]);
 
-                let charProgress = 0;
-                if (progress >= charEnd) charProgress = 1;
-                else if (progress <= charStart) charProgress = 0;
-                else
-                  charProgress = (progress - charStart) / (charEnd - charStart);
-
-                return (
-                  <span
-                    key={i}
-                    style={{
-                      position: "relative",
-                      display: "inline-block",
-                      color: settings.color,
-                      whiteSpace: "pre",
-                    }}>
-                    {charProgress > 0 && (
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: `${charProgress * 100}%`,
-                          overflow: "hidden",
-                          color: settings.activeColor,
-                          zIndex: 1,
-                          transition: "none",
-                        }}>
-                        {char}
-                      </span>
-                    )}
-                    {char}
-                  </span>
-                );
-              })}
-            </span>
-          );
-          charIndexOffset += wordChars.length;
-          return element;
-        })}
-      </div>
-    );
-  };
-
-  const maxLinesHeight = settings.fontSize * 1.5 * 3 + 40;
+  const hasShadow = useMemo(() => {
+    if (isActuallyTransparent) return isHovered;
+    return true;
+  }, [isHovered, isActuallyTransparent]);
 
   return (
     <div
@@ -171,36 +160,70 @@ const LyricApp = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-      }}>
+        cursor: "default",
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}>
       <div
         ref={boxRef}
         style={{
-          backgroundColor: settings.backgroundColor,
-          padding: "12px 24px",
-          borderRadius: "16px",
+          backgroundColor: effectiveBg,
+          padding: "16px 32px",
+          borderRadius: "20px",
           width: "auto",
-          maxWidth: "96%",
+          maxWidth: "92%",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          justifyContent: "center",
-          boxShadow:
-            settings.backgroundColor === "rgba(0,0,0,0)"
+          boxShadow: hasShadow ? "0 10px 40px rgba(0,0,0,0.3)" : "none",
+          backdropFilter: effectiveBlur,
+          WebkitBackdropFilter: effectiveBlur,
+          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          border:
+            isActuallyTransparent && !isHovered
               ? "none"
-              : "0 8px 32px rgba(0,0,0,0.2)",
-          willChange: "transform", // Performance boost
+              : "1px solid rgba(255,255,255,0.1)",
         }}>
-        {lines.map((line, idx) => (
-          <div
-            key={idx}
-            style={{
-              textAlign: "center",
-              width: "100%",
-              marginBottom: idx < lines.length - 1 ? "6px" : 0,
-            }}>
-            {renderKaraokeLine(line, lyricData.progress, idx === 0)}
-          </div>
-        ))}
+        {lines.map((line, idx) => {
+          const lineWords = line.split(/(\s+)/);
+          const lineLength = line.length || 1;
+          let currentOffset = 0;
+
+          return (
+            <div
+              key={idx}
+              style={{
+                textAlign: "center",
+                width: "100%",
+                marginBottom: idx < lines.length - 1 ? "8px" : 0,
+                fontSize: `${idx === 0 ? settings.fontSize : settings.fontSize * 0.7}px`,
+                fontWeight: idx === 0 ? 700 : 500,
+                color: settings.color,
+                textShadow:
+                  isActuallyTransparent && !isHovered
+                    ? "0 1px 3px rgba(0,0,0,0.5)"
+                    : "none",
+              }}>
+              {lineWords.map((word, wordIdx) => {
+                const start = currentOffset / lineLength;
+                const end = (currentOffset + word.length) / lineLength;
+                const elem = (
+                  <KaraokeWord
+                    key={wordIdx}
+                    word={word}
+                    startProgress={start}
+                    endProgress={end}
+                    currentProgress={lyricData.progress}
+                    activeColor={settings.activeColor}
+                    color={settings.color}
+                  />
+                );
+                currentOffset += word.length;
+                return elem;
+              })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

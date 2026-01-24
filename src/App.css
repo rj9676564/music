@@ -1,30 +1,4 @@
-/* App specific styles if any, most are in index.css */
-.progress-bar {
-  width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-  margin: 1.5rem 0;
-  cursor: pointer;
-  position: relative;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #fff;
-  border-radius: 3px;
-  width: 0%;
-}
-
-.time-info {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  font-size: 0.8rem;
-  color: #a0a0c0;
-  margin-top: 0.5rem;
-}
-
+/* App specific styles */
 .toolbar {
   display: flex;
   gap: 1rem;
