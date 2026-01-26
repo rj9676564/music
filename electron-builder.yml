@@ -2,11 +2,15 @@ appId: com.molten.music
 productName: Molten Music
 directories:
   output: release/${version}
+compression: maximum
+asar: true
+electronLanguages:
+  - en
+  - zh-CN
 files:
   - dist
   - dist-electron
   - package.json
-  - node_modules
 mac:
   artifactName: ${productName}_${version}_${arch}.${ext}
   target: dmg

@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:mac-local": "electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {
     "axios": "^1.13.2",
