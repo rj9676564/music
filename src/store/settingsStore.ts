@@ -32,6 +32,9 @@ export const useSettingsStore = create<SettingsState>()(
       audioDeviceId: 'default',
       apiUrl: 'http://localhost:8080',
       updateSettings: (newSettings) => {
+        if (newSettings.apiUrl) {
+          console.log('🌐 API URL Updated to:', newSettings.apiUrl);
+        }
         console.log('--- Settings Store Updating ---', newSettings);
         set((state) => ({ ...state, ...newSettings }));
       },

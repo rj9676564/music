@@ -539,6 +539,7 @@ function App() {
   // Fetch channels on mount
   useEffect(() => {
     const fetchChannels = async () => {
+      console.log(`📡 Fetching channels from: ${settings.apiUrl}/api/channels`);
       setLoadingChannels(true);
       try {
         // Try to fetch from local Go backend first
@@ -588,7 +589,7 @@ function App() {
     };
 
     fetchChannels();
-  }, []);
+  }, [settings.apiUrl]);
 
   const performTranscription = async (path: string, guid?: string) => {
     if (isTranscribing) return false;
@@ -687,9 +688,7 @@ function App() {
         return; // Ignore abort errors
       }
       console.error(e);
-      alert(
-        "无法获取播客列表，请确保后台服务正在运行 (cd backend && go run main.go)",
-      );
+      alert(`无法从 ${settings.apiUrl} 获取播客列表，请检查网络或后端服务状态`);
     } finally {
       // Only turn off loading if this is the current active request
       if (fetchControllerRef.current === controller) {
