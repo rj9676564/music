@@ -71,8 +71,8 @@ body {
 }
 
 .album-art {
-  width: min(250px, 20vh);
-  height: min(250px, 20vh);
+  width: min(250px, 15vh);
+  height: min(250px, 15vh);
   aspect-ratio: 1 / 1;
   border-radius: 20px;
   margin-bottom: 1.2rem;
