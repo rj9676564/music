@@ -7,6 +7,7 @@ import FormData from 'form-data'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const boundsPath = path.join(app.getPath('userData'), 'lyric-bounds.json')
+let globalSettings = { apiUrl: 'http://localhost:8080' }
 
 function saveBounds(bounds: any) {
   try {
@@ -443,6 +444,7 @@ ipcMain.on('update-lyric', (_event, text) => {
 })
 
 ipcMain.on('update-settings', (_event, settings) => {
+  globalSettings = { ...globalSettings, ...settings }
   if (lyricWin && !lyricWin.isDestroyed()) {
     lyricWin.webContents.send('update-settings', settings)
   }
@@ -538,10 +540,11 @@ ipcMain.on('toggle-lyric-window', (_event, visible: boolean) => {
 
 // AI Transcription Service - Now delegated to Go backend
 ipcMain.handle('transcribe-audio', async (_event, audioPath: string, guid?: string) => {
-  console.log('Delegating AI Transcription to Go backend:', audioPath, 'GUID:', guid)
+  const apiUrl = globalSettings.apiUrl || 'http://localhost:8080'
+  console.log(`Delegating AI Transcription to Go backend: ${apiUrl}/api/transcribe`, audioPath, 'GUID:', guid)
   
   try {
-    const response = await axios.post('http://localhost:8080/api/transcribe', {
+    const response = await axios.post(`${apiUrl}/api/transcribe`, {
       audioPath,
       guid
     }, {

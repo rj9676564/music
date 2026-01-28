@@ -11,6 +11,7 @@ interface PlayerSettings {
   loop: boolean;
   lyricOffset: number; // in seconds, can be positive or negative
   audioDeviceId: string;
+  apiUrl: string;
 }
 
 interface SettingsState extends PlayerSettings {
@@ -29,6 +30,7 @@ export const useSettingsStore = create<SettingsState>()(
       loop: false,
       lyricOffset: 0,
       audioDeviceId: 'default',
+      apiUrl: 'http://localhost:8080',
       updateSettings: (newSettings) => {
         console.log('--- Settings Store Updating ---', newSettings);
         set((state) => ({ ...state, ...newSettings }));

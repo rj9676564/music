@@ -545,7 +545,7 @@ function App() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-        const response = await fetch("http://localhost:8080/api/channels", {
+        const response = await fetch(`${settings.apiUrl}/api/channels`, {
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
@@ -664,7 +664,7 @@ function App() {
     try {
       // Call backend to get episodes
       const res = await fetch(
-        `http://localhost:8080/api/channels/${channel.id}/episodes`,
+        `${settings.apiUrl}/api/channels/${channel.id}/episodes`,
         {
           signal: controller.signal,
         },
@@ -702,7 +702,7 @@ function App() {
   const handleDownload = async (episode: any, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const res = await fetch("http://localhost:8080/api/download", {
+      const res = await fetch(`${settings.apiUrl}/api/download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ guid: episode.guid, url: episode.audioUrl }),
@@ -726,7 +726,7 @@ function App() {
 
   const handlePlayPodcast = (episode: any) => {
     const playUrl = episode.local_audio_path
-      ? `http://localhost:8080/media/${episode.local_audio_path.split("/").pop()}`
+      ? `${settings.apiUrl}/media/${episode.local_audio_path.split("/").pop()}`
       : episode.audioUrl;
 
     console.log("Playing podcast:", {

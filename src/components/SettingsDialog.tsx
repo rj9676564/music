@@ -188,6 +188,28 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               </div>
             </div>
             <div className="setting-item">
+              <label>API 服务器地址</label>
+              <input
+                type="text"
+                value={settings.apiUrl}
+                onChange={(e) =>
+                  settings.updateSettings({ apiUrl: e.target.value })
+                }
+                placeholder="http://localhost:8080"
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: "4px",
+                  color: "white",
+                  outline: "none",
+                  marginTop: "4px",
+                  fontSize: "0.8rem",
+                }}
+              />
+            </div>
+            <div className="setting-item">
               <label>输出设备</label>
               <select
                 value={settings.audioDeviceId}

@@ -3,8 +3,8 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache gcc musl-dev
+# Install build dependencies (No longer need gcc for pure-Go SQLite)
+RUN apk add --no-cache ca-certificates
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -13,8 +13,8 @@ RUN go mod download
 COPY . .
 
 # Build the application
-# We use CGO_ENABLED=1 because sitemapping/sqlite might need it
-RUN CGO_ENABLED=1 GOOS=linux go build -o main .
+# We use CGO_ENABLED=0 for faster, statically linked, and cross-platform builds
+RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
 # Final stage
 FROM alpine:latest
