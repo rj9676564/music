@@ -1,195 +1,21 @@
-import { useRef, useEffect, memo, useCallback, useMemo, useState } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { parseLrc, parseSrt } from "./utils/lrcParser";
 import { useSettingsStore } from "./store/settingsStore";
 import { usePlayerStore } from "./store/playerStore";
 import "./App.css";
 
-const LINE_STYLE: React.CSSProperties = {
-  lineHeight: "1.6",
-  padding: "12px 0",
-  boxSizing: "border-box",
-  fontSize: "inherit",
-};
-
-// 1. StaticLine now correctly applies settings.color
-const StaticLine = memo(
-  ({
-    text,
-    color,
-    fontSize,
-  }: {
-    text: string;
-    color: string;
-    fontSize: number;
-  }) => (
-    <div
-      className="lyric-line"
-      style={{ ...LINE_STYLE, color, fontSize: `${fontSize * 0.8}px` }}>
-      {" "}
-      {text}{" "}
-    </div>
-  ),
-);
-
-// 2. ActiveKaraokeLine now respects the selected base color
-const ActiveKaraokeLine = memo(
-  ({
-    text,
-    progress,
-    activeColor,
-    color,
-    fontSize,
-  }: {
-    text: string;
-    progress: number;
-    activeColor: string;
-    color: string;
-    fontSize: number;
-  }) => {
-    const parts = useMemo(() => text.split(/(\s+)/), [text]);
-    const totalChars = text.length || 1;
-    let charOffset = 0;
-    return (
-      <div
-        className="lyric-line active"
-        style={{
-          ...LINE_STYLE,
-          fontSize: `${fontSize}px`,
-          fontWeight: "bold",
-          color: color,
-        }}>
-        {parts.map((word, wordIdx) => {
-          const wordLen = word.length;
-          const wordEndProgress = (charOffset + wordLen) / totalChars;
-          const isWordFocused =
-            progress >= charOffset / totalChars && progress < wordEndProgress;
-          const element = (
-            <span
-              key={wordIdx}
-              style={{
-                whiteSpace: "nowrap",
-                display: "inline-block",
-                transform: isWordFocused ? "scale(1.05)" : "scale(1)",
-                color: progress >= wordEndProgress ? activeColor : "inherit",
-                transition: "transform 0.1s ease-out",
-              }}>
-              {Array.from(word).map((char, i) => {
-                const start = (charOffset + i) / totalChars;
-                const end = (charOffset + i + 1) / totalChars;
-                const p =
-                  progress >= end
-                    ? 1
-                    : progress <= start
-                      ? 0
-                      : (progress - start) / (end - start);
-                return (
-                  <span
-                    key={i}
-                    style={{
-                      position: "relative",
-                      display: "inline-block",
-                      whiteSpace: "pre",
-                    }}>
-                    {p > 0 && (
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: `${p * 105}%`,
-                          overflow: "hidden",
-                          color: activeColor,
-                          zIndex: 1,
-                          whiteSpace: "pre",
-                        }}>
-                        {char}
-                      </span>
-                    )}
-                    {char}
-                  </span>
-                );
-              })}
-            </span>
-          );
-          charOffset += wordLen;
-          return element;
-        })}
-      </div>
-    );
-  },
-);
-
-const ColorPicker = memo(
-  ({
-    label,
-    value,
-    presets,
-    onUpdate,
-  }: {
-    label: string;
-    value: string;
-    presets: string[];
-    onUpdate: (val: string) => void;
-  }) => (
-    <div className="setting-item">
-      <label>{label}</label>
-      <div
-        style={{
-          display: "flex",
-          gap: "8px",
-          marginTop: "5px",
-          flexWrap: "wrap",
-        }}>
-        {presets.map((c) => (
-          <div
-            key={c}
-            onClick={() => onUpdate(c)}
-            style={{
-              width: "22px",
-              height: "22px",
-              borderRadius: "50%",
-              backgroundColor: c.startsWith("rgba(0,0,0,0)")
-                ? "transparent"
-                : c,
-              cursor: "pointer",
-              border:
-                value === c
-                  ? "2px solid #fff"
-                  : "1px solid rgba(255,255,255,0.2)",
-              position: "relative",
-              overflow: "hidden",
-            }}>
-            {c === "rgba(0,0,0,0)" && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: 0,
-                  width: "100%",
-                  height: "1px",
-                  backgroundColor: "red",
-                  transform: "rotate(45deg)",
-                }}
-              />
-            )}
-          </div>
-        ))}
-        <input
-          type="color"
-          value={String(value).startsWith("rgba") ? "#000000" : String(value)}
-          onChange={(e) => onUpdate(e.target.value)}
-          style={{
-            width: "22px",
-            height: "22px",
-            padding: 0,
-            border: "none",
-            background: "none",
-          }}
-        />
-      </div>
-    </div>
-  ),
-);
+// Components
+import { PlayerPanel } from "./components/Player/PlayerPanel";
+import { ChannelsPanel } from "./components/RSS/ChannelsPanel";
+import { EpisodesPanel } from "./components/RSS/EpisodesPanel";
+import { SettingsDialog } from "./components/SettingsDialog";
+import {
+  SubtitlesIcon,
+  LockIcon,
+  UnlockIcon,
+  SettingsIcon,
+  RadioIcon,
+} from "./components/Icons";
 
 function App() {
   const settings = useSettingsStore();
@@ -211,12 +37,36 @@ function App() {
   const setDuration = usePlayerStore((state) => state.setDuration);
   const setTranscribing = usePlayerStore((state) => state.setTranscribing);
 
+  type ViewMode = "player" | "channels" | "episodes";
+  const [viewMode, setViewMode] = useState<ViewMode>("player");
+  const [isLyricLocked, setIsLyricLocked] = useState(true); // 默认锁定（点击穿透）
   const [showSettings, setShowSettings] = useState(false);
-  const [isLyricLocked, setIsLyricLocked] = useState(false);
+  const [podcastEpisodes, setPodcastEpisodes] = useState<any[]>([]);
+  const [currentChannel, setCurrentChannel] = useState<any>(null);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [loadingPodcast, setLoadingPodcast] = useState(false);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+
+  // Trigger window resize based on view mode (Columns)
+  useEffect(() => {
+    if (window.ipcRenderer) {
+      if (viewMode === "player") {
+        window.ipcRenderer.send("set-window-size", 530);
+      } else if (viewMode === "channels") {
+        // Player (530) + Channels (330) + 20px gap
+        window.ipcRenderer.send("set-window-size", 530 + 330 + 20); // 880
+      } else if (viewMode === "episodes") {
+        // Player (530) + Channels (330) + Episodes (330) + 2*20px gap
+        window.ipcRenderer.send("set-window-size", 530 + 330 + 330 + 40); // 1230
+      }
+    }
+  }, [viewMode]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const lyricListRef = useRef<HTMLDivElement>(null);
   const lastIpcUpdateRef = useRef({ index: -1, progress: -1 });
+  const fetchControllerRef = useRef<AbortController | null>(null);
 
   const scrollToActive = useCallback(
     (immediate = false) => {
@@ -245,6 +95,7 @@ function App() {
           .split("/")
           .pop()
           ?.replace(/\.[^/.]+$/, "") || "未知歌曲";
+      setLyrics([]); // Clear lyrics immediately
       setAudio(file.url, { name, artist: "本地音源" });
       const match = await window.ipcRenderer.invoke(
         "find-matching-lyric",
@@ -310,10 +161,102 @@ function App() {
         audioRef.current
           .play()
           .then(() => setPlaying(true))
-          .catch((e) => console.error(e));
+          .catch((e) => {
+            console.error("Audio playback error:", e);
+            console.error("Audio src:", audioRef.current?.src);
+            console.error("Audio path:", audioPath);
+          });
       }
     }
   }, [isPlaying, audioPath, handleOpenMusic, setPlaying]);
+
+  // Audio loading state management
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleLoadStart = () => {
+      console.log("📥 Loading audio...");
+      setIsLoadingAudio(true);
+    };
+
+    const handleLoadedMetadata = () => {
+      console.log("📊 Metadata loaded, duration:", audio.duration);
+      setDuration(audio.duration);
+    };
+
+    const handleCanPlay = () => {
+      console.log("✅ Audio ready to play");
+      setIsLoadingAudio(false);
+    };
+
+    const handleWaiting = () => {
+      console.log("⏳ Buffering...");
+      setIsLoadingAudio(true);
+    };
+
+    const handlePlaying = () => {
+      console.log("▶️ Audio is playing");
+      setIsLoadingAudio(false);
+    };
+
+    const handleStalled = () => {
+      console.log("⚠️ Network stalled");
+      // Don't change loading state, might recover
+    };
+
+    const handleError = (e: Event) => {
+      console.error("❌ Audio error:", e);
+      setIsLoadingAudio(false);
+      setPlaying(false);
+    };
+
+    // Sync play/pause state with actual audio events
+    const handlePlay = () => {
+      console.log("🎵 Audio play event fired");
+      setPlaying(true);
+    };
+
+    const handlePause = () => {
+      console.log("⏸️ Audio pause event fired");
+      setPlaying(false);
+    };
+
+    const handleEnded = () => {
+      console.log("🏁 Audio ended");
+      setPlaying(false);
+      // Handle loop if enabled
+      if (settings.loop && audio) {
+        audio.currentTime = 0;
+        audio.play().catch((e) => console.error("Loop play failed:", e));
+      }
+    };
+
+    // Add all event listeners
+    audio.addEventListener("loadstart", handleLoadStart);
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("canplay", handleCanPlay);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("stalled", handleStalled);
+    audio.addEventListener("error", handleError);
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("ended", handleEnded);
+
+    return () => {
+      audio.removeEventListener("loadstart", handleLoadStart);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("canplay", handleCanPlay);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("stalled", handleStalled);
+      audio.removeEventListener("error", handleError);
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, [audioPath, setPlaying, setDuration, settings.loop]);
 
   // Main Sync Engine
   useEffect(() => {
@@ -321,9 +264,10 @@ function App() {
     if (!audio) return;
     let intervalID: NodeJS.Timeout;
     const sync = () => {
-      const time = audio.currentTime;
-      if (Math.abs(time - usePlayerStore.getState().currentTime) > 0.05)
-        setCurrentTime(time);
+      const rawTime = audio.currentTime;
+      const time = rawTime + settings.lyricOffset; // Apply offset
+      if (Math.abs(rawTime - usePlayerStore.getState().currentTime) > 0.05)
+        setCurrentTime(rawTime);
       const currentLyrics = usePlayerStore.getState().lyrics;
       const index = currentLyrics.findLastIndex((l) => time >= l.time);
       if (index !== -1 && index !== usePlayerStore.getState().activeIndex) {
@@ -394,6 +338,55 @@ function App() {
     window.ipcRenderer?.send("toggle-lyric-window", data.showDesktopLyric);
   }, [settings]);
 
+  // Handle Audio Output Device Change
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const applySinkId = async () => {
+      try {
+        // @ts-ignore - setSinkId might not be in the standard type definition yet
+        if (typeof audio.setSinkId === "function") {
+          const deviceId =
+            settings.audioDeviceId === "default" ? "" : settings.audioDeviceId;
+
+          // Only apply if it's different from the current sinkId
+          // @ts-ignore
+          if (audio.sinkId !== deviceId) {
+            console.log(
+              "🔌 Switching audio output device to:",
+              deviceId || "default",
+            );
+            // @ts-ignore
+            await audio.setSinkId(deviceId);
+          }
+        } else {
+          console.warn(
+            "⚠️ Your browser does not support setSinkId() to switch audio output devices.",
+          );
+        }
+      } catch (err) {
+        console.error("❌ Failed to set audio output device:", err);
+      }
+    };
+
+    applySinkId();
+  }, [settings.audioDeviceId, audioPath]); // Re-apply when device ID or audio source changes
+
+  // 初始化歌词窗口的点击穿透状态
+  useEffect(() => {
+    if (settings.showDesktopLyric && window.ipcRenderer) {
+      // 默认锁定状态（点击穿透）
+      window.ipcRenderer.invoke(
+        "set-lyric-ignore-mouse-events",
+        isLyricLocked,
+        {
+          forward: true,
+        },
+      );
+    }
+  }, [settings.showDesktopLyric, isLyricLocked]);
+
   // Restore
   useEffect(() => {
     const restore = async () => {
@@ -450,26 +443,373 @@ function App() {
     return () => audio.removeEventListener("loadedmetadata", upd);
   }, [audioPath, setDuration]);
 
+  // 循环播放逻辑
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleEnded = () => {
+      if (settings.loop) {
+        audio.currentTime = 0;
+        audio.play().catch((e) => console.error("Loop play error:", e));
+      }
+    };
+
+    audio.addEventListener("ended", handleEnded);
+    return () => audio.removeEventListener("ended", handleEnded);
+  }, [audioPath, settings.loop]);
+
+  // 监听音频设备变化（如蓝牙断开）
+  useEffect(() => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      return;
+    }
+
+    let lastDeviceCount = 0;
+    let deviceCheckTimeout: NodeJS.Timeout | null = null;
+
+    // 检查设备是否可用
+    const checkDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioOutputs = devices.filter(
+          (device) => device.kind === "audiooutput",
+        );
+        const currentDeviceCount = audioOutputs.length;
+
+        // 如果设备数量减少，可能是设备断开
+        if (lastDeviceCount > 0 && currentDeviceCount < lastDeviceCount) {
+          console.log("Audio device disconnected, pausing playback");
+          if (audioRef.current && isPlaying) {
+            audioRef.current.pause();
+            setPlaying(false);
+          }
+        }
+
+        lastDeviceCount = currentDeviceCount;
+      } catch (e) {
+        console.error("Error checking audio devices:", e);
+      }
+    };
+
+    // 初始化设备列表
+    checkDevices();
+
+    // 监听设备变化事件
+    const handleDeviceChange = () => {
+      // 延迟检查，避免频繁触发
+      if (deviceCheckTimeout) {
+        clearTimeout(deviceCheckTimeout);
+      }
+      deviceCheckTimeout = setTimeout(checkDevices, 500);
+    };
+
+    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+
+    // 监听音频播放错误（设备断开可能导致播放失败）
+    const audio = audioRef.current;
+    const handleAudioError = () => {
+      console.log("Audio playback error, may be due to device disconnection");
+      if (isPlaying) {
+        setPlaying(false);
+      }
+    };
+
+    if (audio) {
+      audio.addEventListener("error", handleAudioError);
+      // Note: Removed 'suspend' event listener as it incorrectly interferes with playback state.
+      // The 'suspend' event fires when the browser pauses data loading (e.g., buffering),
+      // which doesn't mean playback has stopped. Use 'play' and 'pause' events instead.
+    }
+
+    return () => {
+      navigator.mediaDevices.removeEventListener(
+        "devicechange",
+        handleDeviceChange,
+      );
+      if (deviceCheckTimeout) {
+        clearTimeout(deviceCheckTimeout);
+      }
+      if (audio) {
+        audio.removeEventListener("error", handleAudioError);
+      }
+    };
+  }, [isPlaying, setPlaying, audioPath]);
+
+  // Fetch channels on mount
+  useEffect(() => {
+    const fetchChannels = async () => {
+      setLoadingChannels(true);
+      try {
+        // Try to fetch from local Go backend first
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+        const response = await fetch("http://localhost:8080/api/channels", {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json();
+          setChannels(data);
+        } else {
+          throw new Error("Backend failed");
+        }
+      } catch (e) {
+        console.warn("Failed to fetch from backend, using fallback");
+        // Fallback to hardcoded list if backend is down
+        setChannels([
+          {
+            id: "the-daily",
+            name: "The Daily",
+            author: "The New York Times",
+            rss: "https://feeds.simplecast.com/54nAGcIl",
+            description: "This is how the news should sound.",
+          },
+          {
+            id: "techmeme-ride-home",
+            name: "Techmeme Ride Home",
+            author: "Techmeme",
+            rss: "https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/A97C9631-B244-469D-BE92-AED10141680D/48F097BA-0869-4820-AB49-AED101416820/podcast.rss",
+            description: "The day's tech news, every day at 5pm ET.",
+          },
+          {
+            id: "gcores",
+            name: "机核 GCORES",
+            author: "GCORES",
+            rss: "https://feed.xyz/gcores",
+            description: "Share the core culture of games.",
+          },
+        ]);
+      } finally {
+        setLoadingChannels(false);
+      }
+    };
+
+    fetchChannels();
+  }, []);
+
+  const performTranscription = async (path: string, guid?: string) => {
+    if (isTranscribing) return false;
+    setTranscribing(true);
+    try {
+      const res: any = await window.ipcRenderer?.invoke(
+        "transcribe-audio",
+        path,
+        guid,
+      );
+      if (res.success && res.srtContent) {
+        const parsed = parseSrt(res.srtContent);
+        setLyrics(parsed);
+
+        // Update local state
+        if (guid) {
+          setPodcastEpisodes((prev) =>
+            prev.map((ep) =>
+              ep.guid === guid ? { ...ep, srt_content: res.srtContent } : ep,
+            ),
+          );
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("Transcription error:", e);
+      return false;
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
   const handleAiTranscribe = async () => {
     if (!audioPath) {
       alert("请先打开一个音频文件");
       return;
     }
-    setTranscribing(true);
-    try {
-      const res: any = await window.ipcRenderer?.invoke(
-        "transcribe-audio",
-        audioPath.replace("local-file://media", ""),
-      );
-      if (res.success) {
-        if (res.srtContent) setLyrics(parseSrt(res.srtContent));
-        alert("🎉 转录成功！");
-      } else alert(res.message);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setTranscribing(false);
+
+    const currentEp = podcastEpisodes.find((ep) => ep.audioUrl === audioPath);
+    let targetPath = audioPath.replace("local-file://media", "");
+
+    if (!audioPath.startsWith("local-file://") && currentEp) {
+      if (currentEp.local_audio_path) {
+        targetPath = currentEp.local_audio_path;
+      } else {
+        alert("请先下载该播客到本地再进行转录");
+        return;
+      }
     }
+
+    const success = await performTranscription(targetPath, currentEp?.guid);
+    if (success) {
+      alert("🎉 转录成功！");
+    } else {
+      alert("转录失败，请检查后端日志");
+    }
+  };
+
+  const handleFetchChannel = async (channel: any) => {
+    // 1. Abort previous request if exists
+    if (fetchControllerRef.current) {
+      fetchControllerRef.current.abort();
+    }
+
+    // 2. Create new controller
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
+
+    setLoadingPodcast(true);
+    setCurrentChannel(channel);
+
+    try {
+      // Call backend to get episodes
+      const res = await fetch(
+        `http://localhost:8080/api/channels/${channel.id}/episodes`,
+        {
+          signal: controller.signal,
+        },
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setPodcastEpisodes(data.episodes || []);
+          setViewMode("episodes");
+        } else {
+          alert("获取失败");
+        }
+      } else {
+        throw new Error("Backend error");
+      }
+    } catch (e: any) {
+      if (e.name === "AbortError") {
+        console.log("Request aborted");
+        return; // Ignore abort errors
+      }
+      console.error(e);
+      alert(
+        "无法获取播客列表，请确保后台服务正在运行 (cd backend && go run main.go)",
+      );
+    } finally {
+      // Only turn off loading if this is the current active request
+      if (fetchControllerRef.current === controller) {
+        setLoadingPodcast(false);
+        fetchControllerRef.current = null;
+      }
+    }
+  };
+
+  const handleDownload = async (episode: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch("http://localhost:8080/api/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guid: episode.guid, url: episode.audioUrl }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.status === "exists" ? "已存在缓存" : "缓存成功");
+
+        // Update local state with returned episode data
+        if (data.episode) {
+          setPodcastEpisodes((prev) =>
+            prev.map((ep) => (ep.guid === episode.guid ? data.episode : ep)),
+          );
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert("缓存失败");
+    }
+  };
+
+  const handlePlayPodcast = (episode: any) => {
+    const playUrl = episode.local_audio_path
+      ? `http://localhost:8080/media/${episode.local_audio_path.split("/").pop()}`
+      : episode.audioUrl;
+
+    console.log("Playing podcast:", {
+      title: episode.title,
+      hasLocalPath: !!episode.local_audio_path,
+      localPath: episode.local_audio_path,
+      playUrl,
+      hasSrtContent: !!episode.srt_content,
+    });
+
+    if (playUrl) {
+      setAudio(playUrl, {
+        name: episode.title || currentChannel?.name || "Podcast",
+        artist: currentChannel?.author || "Podcast",
+      });
+
+      // Load lyrics if available in episode data
+      if (episode.srt_content) {
+        console.log("Loading SRT lyrics from episode data");
+        setLyrics(parseSrt(episode.srt_content));
+      } else {
+        setLyrics([]);
+        // Auto-transcribe if cached locally but no lyrics
+        if (episode.local_audio_path) {
+          console.log(
+            "Auto-transcribing local file:",
+            episode.local_audio_path,
+          );
+          performTranscription(episode.local_audio_path, episode.guid);
+        }
+      }
+
+      // Auto-play after setting audio
+      setTimeout(() => {
+        if (audioRef.current) {
+          console.log("🚀 Attempting auto-play...");
+          audioRef.current
+            .play()
+            .then(() => console.log("✅ Auto-play succeeded"))
+            .catch((e) => console.error("❌ Auto-play failed:", e));
+        }
+      }, 100);
+    }
+  };
+
+  const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return;
+
+    // Remember if audio was playing before seeking
+    const wasPlaying = !audioRef.current.paused;
+
+    const updateProgress = (clientX: number) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const percent = Math.max(
+        0,
+        Math.min(1, (clientX - rect.left) / rect.width),
+      );
+      const newTime = percent * duration;
+      audioRef.current!.currentTime = newTime;
+      setCurrentTime(newTime);
+    };
+
+    // Initial seek on mouse down
+    updateProgress(e.clientX);
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      updateProgress(moveEvent.clientX);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+
+      // Resume playing if it was playing before
+      if (wasPlaying && audioRef.current) {
+        audioRef.current
+          .play()
+          .catch((e) => console.error("Resume play error:", e));
+      }
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   };
 
   const currentProgress = useMemo(() => {
@@ -485,326 +825,121 @@ function App() {
   }, [activeIndex, lyrics, currentTime]);
 
   return (
-    <div className="player-container">
+    <div
+      className="player-container"
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        flexWrap: "nowrap",
+        overflow: "hidden",
+        height: "100vh",
+        boxSizing: "border-box",
+      }}>
+      {/* App Header moved to top-level */}
       <div className="app-header">
         <div className="top-toolbar">
+          {settings.showDesktopLyric && (
+            <button
+              className={`tool-btn ${!isLyricLocked ? "active" : ""}`}
+              onClick={() => {
+                const newLockState = !isLyricLocked;
+                setIsLyricLocked(newLockState);
+                (window as any).ipcRenderer?.invoke(
+                  "set-lyric-ignore-mouse-events",
+                  newLockState,
+                  { forward: true },
+                );
+              }}
+              title={isLyricLocked ? "解锁（可拖动）" : "锁定（点击穿透）"}>
+              {isLyricLocked ? (
+                <LockIcon className="icon" />
+              ) : (
+                <UnlockIcon className="icon" />
+              )}
+            </button>
+          )}
           <button
-            className={`tool-btn ${isLyricLocked ? "active" : ""}`}
+            className={`tool-btn ${settings.showDesktopLyric ? "active" : ""}`}
             onClick={() => {
-              setIsLyricLocked(!isLyricLocked);
-              window.ipcRenderer?.invoke(
-                "set-lyric-ignore-mouse-events",
-                !isLyricLocked,
-                { forward_system_messages: true },
-              );
-            }}>
-            {" "}
-            {isLyricLocked ? "🔒" : "🔓"}{" "}
+              settings.updateSettings({
+                showDesktopLyric: !settings.showDesktopLyric,
+              });
+            }}
+            title={settings.showDesktopLyric ? "隐藏桌面歌词" : "显示桌面歌词"}>
+            <SubtitlesIcon className="icon" />
           </button>
           <button
             className={`tool-btn ${showSettings ? "active" : ""}`}
-            onClick={() => setShowSettings(!showSettings)}>
-            {" "}
-            {showSettings ? "✕" : "☰"}{" "}
+            onClick={() => setShowSettings(!showSettings)}
+            title="设置">
+            <SettingsIcon className="icon" />
+          </button>
+
+          <button
+            className={`tool-btn ${viewMode === "channels" ? "active" : ""}`}
+            onClick={() =>
+              setViewMode(viewMode === "channels" ? "player" : "channels")
+            }
+            title="频道列表">
+            <RadioIcon className="icon" />
           </button>
         </div>
       </div>
 
-      <div className="glass-card main-layout">
-        {showSettings && (
-          <div className="settings-panel inline-panel">
-            <div className="setting-row">
-              <button
-                className={`tool-btn ${isTranscribing ? "" : "active"}`}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  background: isTranscribing
-                    ? "#444"
-                    : "linear-gradient(45deg, #f5576c 0%, #f093fb 100%)",
-                  border: "none",
-                  color: "#fff",
-                  fontWeight: "bold",
-                  fontSize: "0.8rem",
-                }}
-                onClick={handleAiTranscribe}
-                disabled={isTranscribing}>
-                {" "}
-                {isTranscribing ? "⏳ AI 转录中..." : "✨ AI 生成歌词"}{" "}
-              </button>
-              <button
-                className="tool-btn"
-                style={{ padding: "0 15px" }}
-                onClick={() =>
-                  window.ipcRenderer?.invoke("reset-lyric-window")
-                }>
-                {" "}
-                🔄 重置位置{" "}
-              </button>
-            </div>
-            <div className="setting-grid">
-              <div className="setting-item">
-                {" "}
-                <label
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    cursor: "pointer",
-                  }}>
-                  {" "}
-                  桌面歌词{" "}
-                  <input
-                    type="checkbox"
-                    checked={settings.showDesktopLyric}
-                    onChange={(e) =>
-                      settings.updateSettings({
-                        showDesktopLyric: e.target.checked,
-                      })
-                    }
-                  />{" "}
-                </label>{" "}
-              </div>
-              <div className="setting-item">
-                <label>字号: {settings.fontSize}px</label>{" "}
-                <input
-                  type="range"
-                  min="16"
-                  max="72"
-                  value={settings.fontSize}
-                  onChange={(e) =>
-                    settings.updateSettings({
-                      fontSize: parseInt(e.target.value),
-                    })
-                  }
-                />{" "}
-              </div>
-              <div className="setting-item">
-                <label>
-                  桌面歌词阴影:{" "}
-                  {Math.round((settings.shadowOpacity ?? 0.5) * 100)}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={settings.shadowOpacity ?? 0.5}
-                  onChange={(e) =>
-                    settings.updateSettings({
-                      shadowOpacity: parseFloat(e.target.value),
-                    })
-                  }
-                  style={{ width: "100%" }}
-                />
-              </div>
-            </div>
-            <div className="setting-grid colors">
-              <ColorPicker
-                label="常规文字颜色"
-                value={settings.color}
-                onUpdate={(val) => settings.updateSettings({ color: val })}
-                presets={["#ffffff", "#cccccc", "#ffeb3b", "#4caf50"]}
-              />
-              <ColorPicker
-                label="当前播放高亮"
-                value={settings.activeColor}
-                onUpdate={(val) =>
-                  settings.updateSettings({ activeColor: val })
-                }
-                presets={["#ffeb3b", "#ff9800", "#f44336", "#00e676"]}
-              />
-              <ColorPicker
-                label="桌面歌词背景"
-                value={settings.backgroundColor}
-                onUpdate={(val) =>
-                  settings.updateSettings({ backgroundColor: val })
-                }
-                presets={[
-                  "rgba(0,0,0,0)",
-                  "rgba(0,0,0,0.4)",
-                  "rgba(0,0,0,0.8)",
-                  "#1a1a2e",
-                ]}
-              />
-            </div>
-          </div>
-        )}
+      {/* Settings Dialog moved to top-level */}
+      {showSettings && (
+        <SettingsDialog
+          onClose={() => setShowSettings(false)}
+          settings={settings}
+          isTranscribing={isTranscribing}
+          onAiTranscribe={handleAiTranscribe}
+          onResetLyricWindow={() =>
+            (window as any).ipcRenderer?.invoke("reset-lyric-window")
+          }
+        />
+      )}
 
-        <div
-          className="player-content-wrapper"
-          style={{
-            flexGrow: 1,
-            display: "flex",
-            flexDirection: "column",
-            width: "100%",
-            overflow: "hidden",
-          }}>
-          <div
-            className="mini-info"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "15px",
-              marginBottom: "10px",
-            }}>
-            <div
-              className="album-art mini"
-              style={{
-                width: "60px",
-                height: "60px",
-                fontSize: "1.5rem",
-                marginBottom: 0,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-              }}>
-              💿
-            </div>
-            <div
-              className="track-info"
-              style={{ textAlign: "left", marginBottom: 0 }}>
-              <div
-                className="track-name"
-                style={{ fontSize: "1rem", color: "#fff" }}>
-                {musicInfo.name}
-              </div>
-              <div className="artist-name">{musicInfo.artist}</div>
-            </div>
-          </div>
-          <div
-            className="progress-bar"
-            onClick={(e) =>
-              audioRef.current &&
-              (audioRef.current.currentTime =
-                Math.max(
-                  0,
-                  Math.min(
-                    1,
-                    (e.clientX - e.currentTarget.getBoundingClientRect().left) /
-                      e.currentTarget.getBoundingClientRect().width,
-                  ),
-                ) * duration)
-            }>
-            <div
-              className="progress-fill"
-              style={{
-                width: `${(currentTime / duration) * 100 || 0}%`,
-                pointerEvents: "none",
-              }}></div>
-          </div>
-          <div className="time-info">
-            <span>
-              {Math.floor(currentTime / 60)}:
-              {Math.floor(currentTime % 60)
-                .toString()
-                .padStart(2, "0")}
-            </span>
-            <span>
-              {Math.floor(duration / 60)}:
-              {Math.floor(duration % 60)
-                .toString()
-                .padStart(2, "0")}
-            </span>
-          </div>
-          <div className="controls">
-            <button className="nav-btn" onClick={handleOpenMusic}>
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round">
-                <path d="M9 18V5l12-2v13"></path>
-                <circle cx="6" cy="18" r="3"></circle>
-                <circle cx="18" cy="16" r="3"></circle>
-              </svg>
-            </button>
-            <button
-              className="play-btn"
-              onClick={togglePlay}
-              style={{
-                width: "56px",
-                height: "56px",
-                padding: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-              {isPlaying ? (
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M8 5C7.44772 5 7 5.44772 7 6V18C7 18.5523 7.44772 19 8 19H11C11.5523 19 12 18.5523 12 18V6C12 5.44772 11.5523 5 11 5H8Z"
-                    fill="currentColor"
-                  />
-                  <path
-                    d="M15 5C14.4477 5 14 5.44772 14 6V18C14 18.5523 14.4477 19 15 19H18C18.5523 19 19 18.5523 19 18V6C19 5.44772 18.5523 5 18 5H15Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  xmlns="http://www.w3.org/2000/svg"
-                  style={{ marginLeft: "4px" }}>
-                  <path
-                    d="M5.5 3.5L20.5 12L5.5 20.5V3.5Z"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                </svg>
-              )}
-            </button>
-            <button className="nav-btn" onClick={handleOpenLyric}>
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                <line x1="7" y1="8" x2="17" y2="8"></line>
-                <line x1="7" y1="12" x2="17" y2="12"></line>
-              </svg>
-            </button>
-          </div>
-          <div className="lyric-list" ref={lyricListRef}>
-            {lyrics.map((line, index) =>
-              index === activeIndex ? (
-                <ActiveKaraokeLine
-                  key={index}
-                  fontSize={17}
-                  text={line.text}
-                  progress={currentProgress}
-                  activeColor={settings.activeColor}
-                  color={settings.color}
-                />
-              ) : (
-                <StaticLine
-                  key={index}
-                  fontSize={16}
-                  text={line.text}
-                  color={
-                    index < activeIndex ? settings.activeColor : settings.color
-                  }
-                />
-              ),
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Player Panel */}
+      <PlayerPanel
+        settings={settings}
+        musicInfo={musicInfo}
+        currentTime={currentTime}
+        duration={duration}
+        isPlaying={isPlaying}
+        isLoading={isLoadingAudio}
+        isTranscribing={isTranscribing}
+        togglePlay={togglePlay}
+        lyrics={lyrics}
+        activeIndex={activeIndex}
+        lyricListRef={lyricListRef}
+        currentProgress={currentProgress}
+        handleOpenMusic={handleOpenMusic}
+        handleOpenLyric={handleOpenLyric}
+        handleSeek={handleProgressMouseDown}
+      />
+
+      {/* Channels Panel */}
+      {(viewMode === "channels" || viewMode === "episodes") && (
+        <ChannelsPanel
+          loadingChannels={loadingChannels}
+          channels={channels}
+          currentChannel={currentChannel}
+          loadingPodcast={loadingPodcast}
+          onFetchChannel={handleFetchChannel}
+          onClose={() => setViewMode("player")}
+        />
+      )}
+
+      {/* Episodes Panel */}
+      {viewMode === "episodes" && (
+        <EpisodesPanel
+          currentChannel={currentChannel}
+          episodes={podcastEpisodes}
+          onPlayEpisode={handlePlayPodcast}
+          onDownloadEpisode={handleDownload}
+        />
+      )}
+
       {audioPath && <audio ref={audioRef} src={audioPath} key={audioPath} />}
     </div>
   );

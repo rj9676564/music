@@ -19,12 +19,16 @@ function saveBounds(bounds: any) {
 function getSavedBounds() {
   try {
     if (fs.existsSync(boundsPath)) {
-      return JSON.parse(fs.readFileSync(boundsPath, 'utf-8'))
+      const bounds = JSON.parse(fs.readFileSync(boundsPath, 'utf-8'))
+      // 验证保存的位置是否有效
+      if (bounds && typeof bounds === 'object') {
+        return bounds
+      }
     }
   } catch (e) {
     console.error('Failed to get saved bounds', e)
   }
-  return { width: 1000, height: 200 } // Default
+  return { width: 1000, height: 200, x: undefined, y: undefined } // Default
 }
 
 // Must be called before app is ready
@@ -99,13 +103,16 @@ function createWindow() {
 function createLyricWindow() {
   const savedBounds = getSavedBounds()
   
-  // Safety check: If bounds look like they are off-screen (e.g. y is very high)
-  // Or if it's the first run, let's start centered
-  const shouldUseDefaults = !savedBounds.x || savedBounds.y > 800
+  // 检查是否有有效的保存位置
+  const hasValidPosition = savedBounds.x !== undefined && savedBounds.y !== undefined
+  // 检查位置是否在合理范围内（考虑多显示器，y 可能很大）
+  const isPositionValid = hasValidPosition && 
+    savedBounds.x >= -1000 && savedBounds.y >= -100 && 
+    savedBounds.x < 10000 && savedBounds.y < 10000
 
   lyricWin = new BrowserWindow({
-    x: shouldUseDefaults ? undefined : savedBounds.x,
-    y: shouldUseDefaults ? undefined : savedBounds.y,
+    x: isPositionValid ? savedBounds.x : undefined,
+    y: isPositionValid ? savedBounds.y : undefined,
     width: savedBounds.width || 1000,
     height: Math.max(savedBounds.height || 200, 80),
     minHeight: 40,
@@ -120,8 +127,15 @@ function createLyricWindow() {
     },
   })
 
-  if (shouldUseDefaults) {
+  // 如果没有有效位置，居中显示
+  if (!isPositionValid) {
     lyricWin.center()
+    // 居中后立即保存位置
+    setTimeout(() => {
+      if (lyricWin && !lyricWin.isDestroyed()) {
+        saveBounds(lyricWin.getBounds())
+      }
+    }, 100)
   }
 
   console.log('Lyric Window boundary:', lyricWin.getBounds())
@@ -136,14 +150,34 @@ function createLyricWindow() {
   })
 
   // Save bounds when window is moved or resized
+  let boundsUpdateTimer: NodeJS.Timeout | null = null
   const handleBoundsUpdate = () => {
     if (lyricWin && !lyricWin.isDestroyed()) {
-      saveBounds(lyricWin.getBounds())
+      // 防抖：延迟保存，避免频繁写入
+      if (boundsUpdateTimer) {
+        clearTimeout(boundsUpdateTimer)
+      }
+      boundsUpdateTimer = setTimeout(() => {
+        if (lyricWin && !lyricWin.isDestroyed()) {
+          const bounds = lyricWin.getBounds()
+          saveBounds(bounds)
+          console.log('Saved lyric window bounds:', bounds)
+        }
+      }, 500) // 500ms 防抖
     }
   }
   
   lyricWin.on('move', handleBoundsUpdate)
   lyricWin.on('resize', handleBoundsUpdate)
+  
+  // 窗口关闭前保存位置
+  lyricWin.on('close', () => {
+    if (lyricWin && !lyricWin.isDestroyed()) {
+      const bounds = lyricWin.getBounds()
+      saveBounds(bounds)
+      console.log('Saved lyric window bounds on close:', bounds)
+    }
+  })
 
   if (process.env.VITE_DEV_SERVER_URL) {
     const lyricUrl = `${process.env.VITE_DEV_SERVER_URL.replace(/\/$/, '')}/lyric.html`
@@ -172,10 +206,26 @@ function createLyricWindow() {
 }
 
 app.on('window-all-closed', () => {
+  // 保存歌词窗口位置
+  if (lyricWin && !lyricWin.isDestroyed()) {
+    const bounds = lyricWin.getBounds()
+    saveBounds(bounds)
+    console.log('Saved lyric window bounds on app close:', bounds)
+  }
+  
   if (process.platform !== 'darwin') {
     app.quit()
     win = null
     lyricWin = null
+  }
+})
+
+// 应用退出前保存位置
+app.on('before-quit', () => {
+  if (lyricWin && !lyricWin.isDestroyed()) {
+    const bounds = lyricWin.getBounds()
+    saveBounds(bounds)
+    console.log('Saved lyric window bounds before quit:', bounds)
   }
 })
 
@@ -190,11 +240,199 @@ app.whenReady().then(() => {
   registerLocalResourceProtocol()
   createWindow()
   createLyricWindow()
+  
+  // Set Dock icon for macOS
+  if (process.platform === 'darwin') {
+    const iconPath = path.join(process.env.VITE_PUBLIC, 'icon.png')
+    if (fs.existsSync(iconPath)) {
+      app.dock.setIcon(iconPath)
+    }
+  }
 })
 
 ipcMain.handle('set-lyric-ignore-mouse-events', (_event, ignore, options) => {
   if (lyricWin && !lyricWin.isDestroyed()) {
     lyricWin.setIgnoreMouseEvents(ignore, options)
+    // 通知渲染进程锁定状态
+    lyricWin.webContents.send('update-lock-state', ignore)
+  }
+})
+
+ipcMain.on('start-window-drag', () => {
+  if (lyricWin && !lyricWin.isDestroyed()) {
+    // macOS 上拖动窗口需要特殊处理
+    // 通过设置 webContents 的拖拽区域来实现
+    const [x, y] = lyricWin.getPosition()
+    lyricWin.setPosition(x, y)
+  }
+})
+
+// 解析 RSS Feed
+function parseRSSFeed(xmlString: string) {
+  const items: any[] = []
+  
+  // 提取所有 <item> 标签
+  const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi
+  let match
+  
+  while ((match = itemRegex.exec(xmlString)) !== null) {
+    const itemContent = match[1]
+    const item: any = {}
+    
+    // 提取标题
+    const titleMatch = itemContent.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+    if (titleMatch) {
+      item.title = titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/gi, '$1').trim()
+    }
+    
+    // 提取描述
+    const descMatch = itemContent.match(/<description[^>]*>([\s\S]*?)<\/description>/i)
+    if (descMatch) {
+      item.description = descMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/gi, '$1').trim()
+    }
+    
+    // 提取链接
+    const linkMatch = itemContent.match(/<link[^>]*>([\s\S]*?)<\/link>/i)
+    if (linkMatch) {
+      item.link = linkMatch[1].trim()
+    }
+    
+    // 提取发布日期
+    const pubDateMatch = itemContent.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)
+    if (pubDateMatch) {
+      item.pubDate = pubDateMatch[1].trim()
+    }
+    
+    // 提取音频 URL (enclosure)
+    const enclosureMatch = itemContent.match(/<enclosure[^>]*url=["']([^"']+)["'][^>]*>/i)
+    if (enclosureMatch) {
+      item.audioUrl = enclosureMatch[1]
+    }
+    
+    // 如果没有 enclosure，尝试从 itunes:enclosure 获取
+    if (!item.audioUrl) {
+      const itunesMatch = itemContent.match(/<itunes:enclosure[^>]*url=["']([^"']+)["'][^>]*>/i)
+      if (itunesMatch) {
+        item.audioUrl = itunesMatch[1]
+      }
+    }
+    
+    if (item.title && item.audioUrl) {
+      items.push(item)
+    }
+  }
+  
+  return items
+}
+
+// 抓取 The Daily 播客列表
+ipcMain.handle('fetch-daily-podcast', async (_event) => {
+  try {
+    // The Daily 播客的 RSS feed URL
+    const rssUrl = 'https://feeds.simplecast.com/54nAGcIl'
+    
+    const response = await axios.get(rssUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+      timeout: 15000,
+    })
+    
+    if (response.data) {
+      const episodes = parseRSSFeed(response.data)
+      return {
+        success: true,
+        episodes: episodes,
+        count: episodes.length,
+      }
+    }
+    
+    return { success: false, message: '未获取到数据' }
+  } catch (error: any) {
+    console.error('Fetch daily podcast error:', error)
+    return {
+      success: false,
+      message: error.message || '抓取失败',
+    }
+  }
+})
+
+// 通用 RSS 抓取
+ipcMain.handle('fetch-rss-feed', async (_event, rssUrl: string) => {
+  try {
+    if (!rssUrl) return { success: false, message: 'URL 不能为空' }
+
+    const response = await axios.get(rssUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+      timeout: 15000,
+    })
+    
+    if (response.data) {
+      const episodes = parseRSSFeed(response.data)
+      return {
+        success: true,
+        episodes: episodes,
+        count: episodes.length,
+      }
+    }
+    
+    return { success: false, message: '未获取到数据' }
+  } catch (error: any) {
+    console.error('Fetch RSS error:', error)
+    return {
+      success: false,
+      message: error.message || '抓取失败',
+    }
+  }
+})
+
+// 抓取 Daily List 的通用方法
+ipcMain.handle('fetch-daily-list', async (_event, options: {
+  url?: string
+  method?: 'api' | 'scrape'
+  selector?: string
+  headers?: Record<string, string>
+}) => {
+  try {
+    const { url, method = 'api', selector, headers = {} } = options
+
+    if (!url) {
+      return { success: false, message: '请提供 URL' }
+    }
+
+    if (method === 'api') {
+      // 直接调用 API
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          ...headers,
+        },
+        timeout: 10000,
+      })
+      return { success: true, data: response.data }
+    } else if (method === 'scrape') {
+      // 网页爬取（需要 puppeteer 或 cheerio）
+      // 这里提供一个基础示例，实际使用时可能需要安装 cheerio
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          ...headers,
+        },
+        timeout: 10000,
+      })
+      // 简单的 HTML 解析（如果需要更复杂的解析，建议使用 cheerio）
+      return { success: true, data: response.data, html: true }
+    }
+
+    return { success: false, message: '不支持的方法' }
+  } catch (error: any) {
+    console.error('Fetch daily list error:', error)
+    return {
+      success: false,
+      message: error.message || '抓取失败',
+    }
   }
 })
 
@@ -298,54 +536,33 @@ ipcMain.on('toggle-lyric-window', (_event, visible: boolean) => {
   }
 })
 
-// AI Transcription Service (Buzz-like integration with N100 server)
-const WHISPER_SERVER_URL = 'http://d.mrlb.top:9999'
-
-ipcMain.handle('transcribe-audio', async (_event, audioPath: string) => {
-  console.log('Starting AI Transcription for:', audioPath)
+// AI Transcription Service - Now delegated to Go backend
+ipcMain.handle('transcribe-audio', async (_event, audioPath: string, guid?: string) => {
+  console.log('Delegating AI Transcription to Go backend:', audioPath, 'GUID:', guid)
   
-  if (!fs.existsSync(audioPath)) {
-    return { success: false, message: '文件不存在' }
-  }
-
   try {
-    const formData = new FormData()
-    formData.append('audio_file', fs.createReadStream(audioPath))
-
-    // Call N100 Whisper API
-    // Task: transcribe, Language: auto, Output format: srt
-    const apiUrl = `${WHISPER_SERVER_URL}/asr?task=transcribe&output=srt`
-    console.log('Uploading to:', apiUrl)
-
-    const response = await axios.post(apiUrl, formData, {
-      headers: {
-        ...formData.getHeaders(),
-      },
-      // Timeout 15 minutes for long audio
-      timeout: 1000 * 60 * 15
+    const response = await axios.post('http://localhost:8080/api/transcribe', {
+      audioPath,
+      guid
+    }, {
+      timeout: 1000 * 60 * 30 // 30 mins
     })
-
-    if (response.data) {
-      // Success! Path to save: same folder as audio, same name but .srt
-      const ext = path.extname(audioPath)
-      const srtPath = audioPath.substring(0, audioPath.length - ext.length) + '.srt'
-      
-      fs.writeFileSync(srtPath, response.data)
-      console.log('SRT saved to:', srtPath)
-      
-      return { 
-        success: true, 
-        message: '转录成功！歌词已生成并保存到音频所在目录。',
-        srtContent: response.data 
-      }
-    }
-
-    return { success: false, message: '服务器未返回有效内容' }
+    return response.data
   } catch (error: any) {
-    console.error('Transcription error:', error)
+    console.error('Transcription error from backend:', error.message)
     return { 
       success: false, 
-      message: `转录失败: ${error.message}. 请检查 N100 上的 Docker 服务是否在运行且端口 9000 已开放。` 
+      message: `后端转录服务错误: ${error.message}` 
     }
+  }
+})
+
+// Generic resize handler
+ipcMain.on('set-window-size', (_event, width: number) => {
+  if (win && !win.isDestroyed()) {
+     const [currentW, currentH] = win.getSize()
+     if (currentW !== width) {
+        win.setSize(width, 820, true)
+     }
   }
 })

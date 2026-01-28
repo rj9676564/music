@@ -24,3 +24,9 @@ release
 *.njsproj
 *.sln
 *.sw?
+
+# Backend
+backend/data/
+backend/media_cache/
+backend/*.db
+backend/main

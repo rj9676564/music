@@ -8,6 +8,9 @@ interface PlayerSettings {
   backgroundColor: string;
   shadowOpacity: number;
   showDesktopLyric: boolean;
+  loop: boolean;
+  lyricOffset: number; // in seconds, can be positive or negative
+  audioDeviceId: string;
 }
 
 interface SettingsState extends PlayerSettings {
@@ -23,6 +26,9 @@ export const useSettingsStore = create<SettingsState>()(
       backgroundColor: 'rgba(0, 0, 0, 0)',
       shadowOpacity: 0.1,
       showDesktopLyric: true,
+      loop: false,
+      lyricOffset: 0,
+      audioDeviceId: 'default',
       updateSettings: (newSettings) => {
         console.log('--- Settings Store Updating ---', newSettings);
         set((state) => ({ ...state, ...newSettings }));

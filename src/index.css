@@ -12,6 +12,15 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -62,8 +71,8 @@ body {
 }
 
 .album-art {
-  width: min(250px, 30vh);
-  height: min(250px, 30vh);
+  width: min(250px, 20vh);
+  height: min(250px, 20vh);
   aspect-ratio: 1 / 1;
   border-radius: 20px;
   margin-bottom: 1.2rem;
@@ -76,6 +85,8 @@ body {
   text-align: center;
   margin-bottom: 1.2rem;
   flex-shrink: 0;
+  width: 100%;
+  padding: 0 1rem;
 }
 
 .track-name {
@@ -83,11 +94,19 @@ body {
   font-weight: 700;
   margin-bottom: 0.3rem;
   color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
 }
 
 .artist-name {
   font-size: 0.9rem;
   color: #a0a0c0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
 }
 
 .controls {
@@ -150,7 +169,25 @@ body {
   transform: scale(1.1);
 }
 
-/* Lyric List Styles */
+/* Custom Scrollbar Utility */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 .lyric-list {
   flex-grow: 1;
   width: 100%;
@@ -161,25 +198,6 @@ body {
   mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
   padding-right: 4px; /* Space for scrollbar */
-}
-
-/* Custom Scrollbar */
-.lyric-list::-webkit-scrollbar {
-  width: 5px;
-}
-
-.lyric-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.lyric-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  transition: background 0.3s;
-}
-
-.lyric-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
 }
 
 .lyric-line {
@@ -235,6 +253,9 @@ body {
   color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   transition: all 0.2s ease;
+  padding: 6px;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .top-toolbar .tool-btn:hover {
@@ -249,7 +270,32 @@ body {
   color: #f5576c;
 }
 
-/* Settings Panel */
+/* 优化图标按钮样式 */
+.top-toolbar .tool-btn .icon,
+.top-toolbar .tool-btn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  transition: all 0.2s ease;
+  color: inherit;
+  flex-shrink: 0;
+  stroke: currentColor;
+  fill: none;
+}
+
+.top-toolbar .tool-btn:hover .icon,
+.top-toolbar .tool-btn:hover svg {
+  transform: scale(1.1);
+  color: inherit;
+}
+
+.top-toolbar .tool-btn.active .icon,
+.top-toolbar .tool-btn.active svg {
+  color: #f5576c;
+  stroke: #f5576c;
+}
+
+/* Settings Panel - 保留旧样式以兼容 */
 .settings-panel.inline-panel {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -258,6 +304,118 @@ body {
   margin-bottom: 1.2rem;
   width: 100%;
   flex-shrink: 0;
+}
+
+/* 设置弹窗样式 - 参考 Flutter 的 AlertDialog */
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.settings-dialog {
+  background: #1a1a2e;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.settings-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 1.5rem 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-dialog-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.settings-close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.settings-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.settings-dialog-content.custom-scrollbar {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.settings-dialog-actions {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-confirm-btn {
+  background: transparent;
+  border: none;
+  color: #f5576c;
+  cursor: pointer;
+  padding: 8px 20px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.settings-confirm-btn:hover {
+  background: rgba(245, 87, 108, 0.1);
 }
 
 .setting-row {
@@ -269,55 +427,120 @@ body {
 .setting-grid {
   display: grid;
   grid-template-columns: 1fr 1.5fr;
-  gap: 15px;
+  gap: 15px 20px;
   margin-bottom: 10px;
+  row-gap: 16px;
+}
+
+.setting-grid-checkbox {
+  grid-template-columns: 1fr 1fr;
 }
 
 .setting-grid.colors {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
+  gap: 20px;
   background: rgba(0, 0, 0, 0.2);
-  padding: 10px;
+  padding: 1.2rem;
   border-radius: 12px;
 }
 
 .setting-item {
-  margin-bottom: 0.8rem;
+  margin-bottom: 1.2rem;
   display: flex;
   flex-direction: column;
 }
 
+.setting-item:last-child {
+  margin-bottom: 0;
+}
+
 .setting-item label {
-  font-size: 0.85rem;
-  color: #a0a0c0;
-  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 0.6rem;
+  display: block;
+}
+
+/* Checkbox 类型的 setting-item 特殊样式 */
+.setting-item label[style*="justify-content: space-between"] {
+  margin-bottom: 0;
+  padding: 8px 0;
+  align-items: center;
 }
 
 .setting-item input[type="range"] {
   width: 100%;
   accent-color: #f5576c;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+.setting-item input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f5576c;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(245, 87, 108, 0.2);
+}
+
+.setting-item input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f5576c;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 0 2px rgba(245, 87, 108, 0.2);
+}
+
+/* 优化复选框样式 */
+.setting-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #f5576c;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Checkbox 类型的 setting-item 特殊样式 - 增加垂直间距 */
+.setting-item-checkbox {
+  margin-bottom: 1.6rem;
+}
+
+.setting-item-checkbox label {
+  margin-bottom: 0;
+  padding: 10px 0;
+  align-items: center;
+  min-height: 38px;
 }
 
 /* Progress Bar Styles */
-/* Progress Bar Styles */
 .progress-bar {
   width: 100%;
-  height: 8px; /* Slightly taller */
+  height: 14px;
   background: rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
+  border-radius: 14px;
   margin: 1.2rem 0 0.4rem 0;
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.05); /* Added subtle border */
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #f5576c 0%, #f093fb 100%);
-  border-radius: 10px;
+  border-radius: 14px;
   width: 0%;
   box-shadow: 0 0 15px rgba(245, 87, 108, 0.5);
   transition: width 0.1s linear;
+  box-sizing: border-box;
 }
 
 .time-info {

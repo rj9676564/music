@@ -82,8 +82,10 @@ const LyricApp = () => {
     shadowOpacity: 0.5,
   });
   const [isHovered, setIsHovered] = useState(false);
+  const [isLocked, setIsLocked] = useState(true); // 默认锁定（点击穿透）
   const boxRef = useRef<HTMLDivElement>(null);
   const lastHeightRef = useRef(0);
+  const dragHandleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!window.ipcRenderer) return;
@@ -105,13 +107,24 @@ const LyricApp = () => {
       setSettings((prev) => ({ ...prev, ...s }));
     };
 
+    const lockStateHandler = (_event: any, locked: boolean) => {
+      setIsLocked(locked);
+    };
+
     window.ipcRenderer.on("update-lyric", lyricHandler);
     window.ipcRenderer.on("update-settings", settingsHandler);
+    window.ipcRenderer.on("update-lock-state", lockStateHandler);
+
+    // 初始化时设置点击穿透（默认锁定）
+    window.ipcRenderer.invoke("set-lyric-ignore-mouse-events", true, {
+      forward: true,
+    });
 
     return () => {
       if (window.ipcRenderer.off) {
         window.ipcRenderer.off("update-lyric", lyricHandler);
         window.ipcRenderer.off("update-settings", settingsHandler);
+        window.ipcRenderer.off("update-lock-state", lockStateHandler);
       }
     };
   }, []);
@@ -155,39 +168,120 @@ const LyricApp = () => {
     return true;
   }, [isHovered, isActuallyTransparent]);
 
+
   return (
     <div
       className="lyric-container"
       style={{
         width: "100vw",
         height: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "default",
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}>
+        position: "relative",
+        overflow: "hidden",
+      }}>
+      {/* 透明背景层 - 用于拖动，只在解锁时启用 */}
       <div
-        ref={boxRef}
         style={{
-          backgroundColor: effectiveBg,
-          padding: "16px 32px",
-          borderRadius: "20px",
-          width: "auto",
-          maxWidth: "92%",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: "100%",
+          height: "100%",
+          WebkitAppRegion: isLocked ? "none" : "drag",
+          pointerEvents: isLocked ? "none" : "auto",
+          zIndex: 1,
+        } as React.CSSProperties}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      />
+      
+      {/* 拖动手柄 - 只在解锁时显示 */}
+      {!isLocked && (
+        <div
+          ref={dragHandleRef}
+          style={{
+            position: "absolute",
+            top: "10px",
+            right: "10px",
+            width: "40px",
+            height: "40px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: isHovered
+              ? "rgba(255, 255, 255, 0.1)"
+              : "rgba(255, 255, 255, 0.05)",
+            borderRadius: "8px",
+            cursor: "move",
+            transition: "all 0.2s ease",
+            zIndex: 1000,
+            pointerEvents: "auto",
+            WebkitAppRegion: "drag",
+          } as React.CSSProperties}
+          title="拖动窗口">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              color: isHovered
+                ? "rgba(255, 255, 255, 0.8)"
+                : "rgba(255, 255, 255, 0.3)",
+              WebkitAppRegion: "no-drag",
+            } as React.CSSProperties}>
+            <line x1="9" y1="3" x2="9" y2="21"></line>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="3" y1="15" x2="21" y2="15"></line>
+          </svg>
+        </div>
+      )}
+      
+      {/* 歌词内容区域 - 解锁时可拖动，禁用文本选择 */}
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
-          boxShadow: hasShadow ? "0 10px 40px rgba(0,0,0,0.3)" : "none",
-          backdropFilter: effectiveBlur,
-          WebkitBackdropFilter: effectiveBlur,
-          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-          border:
-            isActuallyTransparent && !isHovered
-              ? "none"
-              : "1px solid rgba(255,255,255,0.1)",
-        }}>
+          justifyContent: "center",
+          position: "relative",
+          zIndex: 2,
+          pointerEvents: "auto",
+          WebkitAppRegion: isLocked ? "none" : "drag",
+          userSelect: "none",
+          WebkitUserSelect: "none",
+        } as React.CSSProperties}>
+        <div
+          ref={boxRef}
+          style={{
+            backgroundColor: effectiveBg,
+            padding: "16px 32px",
+            borderRadius: "20px",
+            width: "auto",
+            maxWidth: "92%",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            boxShadow: hasShadow ? "0 10px 40px rgba(0,0,0,0.3)" : "none",
+            backdropFilter: effectiveBlur,
+            WebkitBackdropFilter: effectiveBlur,
+            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            border:
+              isActuallyTransparent && !isHovered
+                ? "none"
+                : "1px solid rgba(255,255,255,0.1)",
+            WebkitAppRegion: isLocked ? "none" : "drag",
+            userSelect: "none",
+            WebkitUserSelect: "none",
+            pointerEvents: "auto",
+          } as React.CSSProperties}>
         {lines.map((line, idx) => {
           const lineWords = line.split(/(\s+)/);
           const lineLength = line.length || 1;
@@ -207,7 +301,11 @@ const LyricApp = () => {
                   isActuallyTransparent && !isHovered
                     ? `0 1px 3px rgba(0,0,0,${settings.shadowOpacity})`
                     : "none",
-              }}>
+                userSelect: "none",
+                WebkitUserSelect: "none",
+                WebkitAppRegion: isLocked ? "none" : "drag",
+                pointerEvents: "auto",
+              } as React.CSSProperties}>
               {lineWords.map((word, wordIdx) => {
                 const start = currentOffset / lineLength;
                 const end = (currentOffset + word.length) / lineLength;
@@ -233,6 +331,7 @@ const LyricApp = () => {
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
