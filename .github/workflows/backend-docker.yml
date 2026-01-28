@@ -28,8 +28,8 @@ jobs:
 
       - name: Set Image Name Lowercase
         run: |
-          echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/molten-music-backend" >> $GITHUB_ENV
-          echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> $GITHUB_ENV
+          IMAGE_ID=$(echo "ghcr.io/${{ github.repository_owner }}/molten-music-backend" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME_LC=$IMAGE_ID" >> $GITHUB_ENV
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
