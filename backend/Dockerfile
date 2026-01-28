@@ -29,7 +29,7 @@ RUN apk add --no-cache ca-certificates libc6-compat
 RUN mkdir -p data media_cache
 
 # Copy the binary from builder
-COPY --from:builder /app/main .
+COPY --from=builder /app/main .
 
 EXPOSE 8080
 
