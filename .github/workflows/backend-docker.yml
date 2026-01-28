@@ -38,6 +38,7 @@ jobs:
           images: ${{ env.IMAGE_NAME_LC }}
           tags: |
             type=semver,pattern={{version}}
+            type=raw,value=latest
             type=sha,format=long
 
       - name: Build and push Backend image
