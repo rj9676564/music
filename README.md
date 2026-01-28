@@ -1,6 +1,6 @@
 # Molten Music 🎵
 
-Molten Music is a modern, cross-platform desktop music player built with Electron and React. It features a futuristic "liquid metal" design, powerful desktop lyric capabilities, and offline AI-powered lyrics generation.
+Molten Music is a modern, cross-platform desktop music and podcast player built with Electron, React, and Go. It features a futuristic "liquid metal" design, powerful desktop lyric capabilities, RSS podcast integration, and offline AI-powered transcription.
 
 ![Molten Music Icon](public/icon.png)
 
@@ -8,73 +8,81 @@ Molten Music is a modern, cross-platform desktop music player built with Electro
 
 - **Futuristic UI**: Glassmorphism design with fluid animations and a "molten" aesthetic.
 - **Desktop Lyrics**: 
-  - Floating desktop lyric window.
-  - Karaoke-style word-by-word highlighting.
-  - **Transparent Mode**: Pure text lyrics floating on your screen with customizable text shadows.
-  - Fully customizable colors, fonts, and sizes.
-  - "Lock" mode to let mouse events pass through.
-- **Local Music Support**: 
-  - Supports MP3, WAV, FLAC, M4A, and more.
-  - Auto-scans for matching `.lrc` or `.srt` lyric files.
-  - Manual lyric file selection support.
+  - Floating desktop lyric window with transparent mode.
+  - Karaoke-style word-by-word highlighting (supports .lrc and .srt).
+  - "Lock" mode (click-through) to work without interruption.
+- **RSS Podcast System**: 
+  - Subscribe to your favorite tech and news podcasts (RSSHub supported).
+  - Built-in podcasts: The Daily, Techmeme Ride Home, GCORES, All Ears English, and more.
+  - One-click download and offline cache management.
 - **AI-Powered Transcription**:
-  - Integrated with OpenAI Whisper (via local/remote API).
-  - One-click "AI Generate Lyrics" for songs without lyric files.
-  - Automatically saves generated lyrics as `.srt` files.
-- **Smart Progress**:
-  - Desktop lyric window stays in sync even when the main window is minimized (background throttling disabled).
-  - Smooth 60fps lyric rendering.
+  - Integrated with OpenAI Whisper.
+  - One-click "AI Generate Lyrics" for songs or podcasts without lyric files.
+  - **Option 3 Optimization**: Transcriptions are stored directly in the database, saving disk space and simplifying deployment.
+- **Smart Audio Engine**:
+  - **Audio Output Selection**: Switch between speakers, headphones, or Bluetooth devices directly in the app.
+  - **Loop Playback**: High-visibility toggle for repeating your favorite tracks or episodes.
+  - **Lyric Sync Tool**: Quick +/- 0.5s offset adjustment buttons.
 
 ## 🛠️ Tech Stack
 
-- **Core**: [Electron](https://www.electronjs.org/), [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/)
-- **Build Tool**: [Vite](https://vitejs.dev/)
+- **Frontend**: [Electron](https://www.electronjs.org/), [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/)
+- **Backend**: [Go](https://go.dev/) (SQLite + GORM)
 - **State Management**: [Zustand](https://github.com/pmndrs/zustand)
-- **Styling**: CSS Modules, Glassmorphism
-- **AI Integration**: Custom Whisper API client
+- **Build Tool**: [Vite](https://vitejs.dev/)
+- **CI/CD**: GitHub Actions (Docker Build & Multi-platform Release)
 
 ## 🚀 Getting Started
 
 ### Prerequisites
+- Node.js (v20+)
+- Go (v1.23+)
+- Docker (for deployment)
 
-- Node.js (v18 or higher)
-- pnpm (recommended) or npm
+### 1. Local Development
 
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone git@github.com:rj9676564/music.git
-   cd molten-spicule
-   ```
-
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-3. Run in development mode:
-   ```bash
-   pnpm dev
-   ```
-
-### Building for Production
-
-To build the application for your local OS (macOS/Windows/Linux):
-
+#### Start Backend
 ```bash
-pnpm build
+cd backend
+go run main.go
+```
+The backend will start on `http://localhost:8080`.
+
+#### Start Frontend
+```bash
+# In the root directory
+pnpm install
+pnpm dev
 ```
 
-The output text will be in the `release` or `dist` directory.
+### 2. Deployment
 
-## 🤖 AI Configuration
+#### Backend (Docker)
+We use **GHCR (GitHub Container Registry)** for hosting backend images.
 
-To use the AI transcription feature, you need a running Whisper ASR Webservice.
-By default, it is configured to connect to: `http://d.mrlb.top:9999`
+**Pull & Run:**
+```bash
+docker pull ghcr.io/rj9676564/molten-music-backend:latest
+docker run -d -p 8080:8080 -v ./molten-data:/app/data ghcr.io/rj9676564/molten-music-backend:latest
+```
 
-You can change this in `electron/main.ts` if you host your own local Whisper server (e.g., using [ahmetoner/whisper-asr-webservice](https://github.com/ahmetoner/whisper-asr-webservice)).
+**Build via GitHub Actions:**
+- Push a tag starting with `b*` (e.g., `b1.0.0`) to trigger a backend Docker build.
+
+#### Frontend (Electron)
+**Build locally:**
+```bash
+pnpm build         # Common build
+pnpm build:mac-local # Build optimized DMG for Apple Silicon
+```
+
+**Auto Release:**
+- Push a tag starting with `v*` (e.g., `v1.0.0`) to trigger multi-platform production builds and GitHub Releases.
+
+## 🤖 AI Logic
+To use the AI transcription feature, a Whisper ASR Webservice is required.
+By default, the backend connects to: `http://xxx/`
+You can modify this in `backend/main.go`.
 
 ## 📄 License
-
 [MIT](LICENSE)
