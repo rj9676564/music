@@ -42,6 +42,7 @@ type Episode struct {
 	Duration      string    `json:"duration"`
 	LocalAudioPath string   `json:"local_audio_path"`
 	SrtContent    string    `json:"srt_content"`
+	Summary       string    `json:"summary" gorm:"type:text"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -367,6 +368,153 @@ func saveSrtHandler(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
+// AI Summarization
+type SummaryRequest struct {
+	GUID       string `json:"guid"`
+	SrtContent string `json:"srtContent"`
+	APIKey     string `json:"apiKey"`
+	APIBase    string `json:"apiBase"`
+	Model      string `json:"model"`
+}
+
+func summarizeHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SummaryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("🤖 Received summary request for GUID: %s, Model: %s", req.GUID, req.Model)
+
+	// 1. Check if summary already exists in DB
+	if req.GUID != "" {
+		var episode Episode
+		if err := db.Where("guid = ?", req.GUID).First(&episode).Error; err == nil && episode.Summary != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"summary": episode.Summary,
+				"cached":  true,
+			})
+			return
+		}
+	}
+
+	if req.SrtContent == "" {
+		http.Error(w, "SrtContent is required", http.StatusBadRequest)
+		return
+	}
+
+	// 2. Call LLM to summarize
+	log.Printf("📡 Calling LLM (%s) for summary...", req.Model)
+	summary, err := callLLMForSummary(req.SrtContent, req.APIKey, req.APIBase, req.Model)
+	if err != nil {
+		log.Printf("❌ LLM summary error: %v", err)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": fmt.Sprintf("AI 生成摘要失败: %v", err),
+		})
+		return
+	}
+
+	// 3. Save to DB
+	if req.GUID != "" {
+		db.Model(&Episode{}).Where("guid = ?", req.GUID).Update("summary", summary)
+	}
+
+	log.Printf("✅ Summary generated successfully for %s", req.GUID)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"summary": summary,
+	})
+}
+
+func callLLMForSummary(content, customKey, customBase, customModel string) (string, error) {
+	apiKey := customKey
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+
+	apiBase := customBase
+	if apiBase == "" {
+		apiBase = os.Getenv("OPENAI_API_BASE")
+	}
+	if apiBase == "" {
+		apiBase = "https://api.openai.com/v1"
+	}
+
+	model := customModel
+	if model == "" {
+		model = os.Getenv("OPENAI_MODEL")
+	}
+	if model == "" {
+		model = "gpt-3.5-turbo"
+	}
+
+	if apiKey == "" {
+		return "", fmt.Errorf("OPENAI_API_KEY not set")
+	}
+
+	// Simple heuristic: Take first 4000 chars of srt to avoid context limit
+	textToSummarize := content
+	if len(textToSummarize) > 8000 {
+		textToSummarize = textToSummarize[:8000]
+	}
+
+	prompt := "你是一个专业的播客文稿摘要助手。请根据以下 SRT 格式的转录文本，生成一份简洁生动的内容摘要。要求：1. 概括核心亮点；2. 使用时间轴标记关键话题（如果有的话）；3. 语言通俗易懂；4. 直接输出摘要内容，不要包含转录格式。\n\n文本内容：\n" + textToSummarize
+
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+	}
+
+	jsonData, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", apiBase+"/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("no choices returned")
+	}
+
+	return result.Choices[0].Message.Content, nil
+}
+
 // AI Transcribe logic moved from Electron
 const WHISPER_SERVER_URL = "http://d.mrlb.top:9999"
 
@@ -390,12 +538,32 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Starting transcription for: %s (GUID: %s)", req.AudioPath, req.GUID)
+	log.Printf("🎙️ Starting transcription for: %s (GUID: %s)", req.AudioPath, req.GUID)
+	log.Printf("🌐 WHISPER_SERVER_URL: %s", WHISPER_SERVER_URL)
+
+	// Normalize the audio path - extract just the filename if it's a full path
+	audioFilename := filepath.Base(req.AudioPath)
+	localPath := filepath.Join("media_cache", audioFilename)
+	
+	// Try the normalized local path first
+	var filePath string
+	if _, err := os.Stat(localPath); err == nil {
+		filePath = localPath
+	} else if _, err := os.Stat(req.AudioPath); err == nil {
+		// Fallback to the original path if it exists
+		filePath = req.AudioPath
+	} else {
+		log.Printf("❌ Transcription failed: file not found at %s or %s", localPath, req.AudioPath)
+		http.Error(w, fmt.Sprintf("Audio file not found: %s", audioFilename), http.StatusNotFound)
+		return
+	}
+	
+	log.Printf("📂 Using audio file: %s", filePath)
 
 	// 1. Read the audio file
-	file, err := os.Open(req.AudioPath)
+	file, err := os.Open(filePath)
 	if err != nil {
-		log.Printf("❌ Transcription failed: could not open file %s: %v", req.AudioPath, err)
+		log.Printf("❌ Transcription failed: could not open file %s: %v", filePath, err)
 		http.Error(w, fmt.Sprintf("Failed to open audio file: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -423,7 +591,8 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Call Whisper API
 	whisperURL := fmt.Sprintf("%s/asr?task=transcribe&output=srt", WHISPER_SERVER_URL)
-	log.Printf("🚀 Uploading to Whisper server: %s", WHISPER_SERVER_URL)
+	log.Printf("� Constructed Whisper URL: %s", whisperURL)
+	log.Printf("�🚀 Uploading to Whisper server: %s (File size: %.2f MB)", WHISPER_SERVER_URL, float64(fileInfo.Size())/(1024*1024))
 	
 	proxyReq, err := http.NewRequest("POST", whisperURL, body)
 	if err != nil {
@@ -436,13 +605,16 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 	// Use a longer timeout for transcription
 	client := &http.Client{Timeout: 30 * time.Minute}
 	start := time.Now()
+	log.Printf("⏱️ Sending request to Whisper server (timeout: 30min)...")
 	resp, err := client.Do(proxyReq)
 	if err != nil {
-		log.Printf("❌ Whisper server request failed: %v", err)
+		log.Printf("❌ Whisper server request failed after %v: %v", time.Since(start), err)
 		http.Error(w, fmt.Sprintf("Whisper server error: %v", err), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
+
+	log.Printf("📥 Received response from Whisper server (Status: %d) after %v", resp.StatusCode, time.Since(start))
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -492,8 +664,9 @@ func main() {
 	http.HandleFunc("/api/channels", listChannelsHandler)
     http.HandleFunc("/api/channels/", channelEpisodesHandler) // Matches /api/channels/{id}/episodes... technically matches anything after
     http.HandleFunc("/api/download", downloadEpisodeHandler)
-    http.HandleFunc("/api/srt", saveSrtHandler)
+    http.HandleFunc("/api/save-srt", saveSrtHandler)
     http.HandleFunc("/api/transcribe", transcribeHandler)
+    http.HandleFunc("/api/summary", summarizeHandler)
     
     // Serve cached media files with CORS
     fs := http.FileServer(http.Dir("media_cache"))
