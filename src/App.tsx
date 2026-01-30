@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
+import axios from "axios";
 import { parseLrc, parseSrt } from "./utils/lrcParser";
 import { useSettingsStore } from "./store/settingsStore";
 import { usePlayerStore } from "./store/playerStore";
@@ -36,6 +37,7 @@ function App() {
   const setLyrics = usePlayerStore((state) => state.setLyrics);
   const setDuration = usePlayerStore((state) => state.setDuration);
   const setTranscribing = usePlayerStore((state) => state.setTranscribing);
+  const [isSummarizing, setSummarizing] = useState(false);
 
   type ViewMode = "player" | "channels" | "episodes";
   const [viewMode, setViewMode] = useState<ViewMode>("player");
@@ -373,6 +375,17 @@ function App() {
     applySinkId();
   }, [settings.audioDeviceId, audioPath]); // Re-apply when device ID or audio source changes
 
+  // Handle Playback Rate Change
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const rate = usePlayerStore.getState().playbackRate;
+    if (audio.playbackRate !== rate) {
+      console.log("⏩ Setting playback rate to:", rate);
+      audio.playbackRate = rate;
+    }
+  }, [usePlayerStore((state) => state.playbackRate), audioPath]);
+
   // 初始化歌词窗口的点击穿透状态
   useEffect(() => {
     if (settings.showDesktopLyric && window.ipcRenderer) {
@@ -591,6 +604,67 @@ function App() {
     fetchChannels();
   }, [settings.apiUrl]);
 
+  // 定期检查转录状态
+  useEffect(() => {
+    const currentGuid = musicInfo.guid;
+
+    if (!currentGuid || musicInfo.srtContent || !currentChannel) {
+      return;
+    }
+
+    console.log(
+      "🔄 Starting transcription status checker for:",
+      musicInfo.name,
+    );
+
+    const checkInterval = setInterval(async () => {
+      try {
+        const response = await axios.get(
+          `${settings.apiUrl}/api/channels/${currentChannel.id}/episodes`,
+        );
+
+        const updatedEpisode = response.data.episodes.find(
+          (ep: any) => ep.guid === currentGuid,
+        );
+
+        if (updatedEpisode?.srt_content && !musicInfo.srtContent) {
+          console.log("✅ Transcription completed! Loading subtitles...");
+
+          // 更新歌词显示
+          setLyrics(parseSrt(updatedEpisode.srt_content));
+
+          // 更新节目列表
+          setPodcastEpisodes((prev) =>
+            prev.map((ep) =>
+              ep.guid === updatedEpisode.guid ? updatedEpisode : ep,
+            ),
+          );
+
+          // 更新 musicInfo
+          setAudio(audioPath || "", {
+            ...musicInfo,
+            srtContent: updatedEpisode.srt_content,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to check transcription status:", error);
+      }
+    }, 15000); // 每 15 秒检查一次
+
+    return () => {
+      console.log("🛑 Stopping transcription status checker");
+      clearInterval(checkInterval);
+    };
+  }, [
+    musicInfo.guid,
+    musicInfo.srtContent,
+    currentChannel,
+    settings.apiUrl,
+    audioPath,
+    musicInfo,
+    setAudio,
+  ]);
+
   const performTranscription = async (path: string, guid?: string) => {
     if (isTranscribing) return false;
     setTranscribing(true);
@@ -698,6 +772,85 @@ function App() {
     }
   };
 
+  const handleSummarize = async () => {
+    console.log("🔍 Summarize check:", {
+      isSummarizing,
+      musicInfoGuid: musicInfo.guid,
+    });
+
+    if (isSummarizing) {
+      console.log("⚠️ Summary already in progress...");
+      return;
+    }
+
+    if (!musicInfo.guid) {
+      console.error(
+        "❌ Cannot summarize: Current track has no GUID!",
+        musicInfo,
+      );
+      alert(
+        "错误：当前曲目缺少 ID 信息，无法生成 AI 摘要。请尝试重新点击列表中的节目播放。",
+      );
+      return;
+    }
+
+    // Get srt content from current lyrics if not in episode metadata
+    const srtContent =
+      musicInfo.srtContent || lyrics.map((l) => l.text).join("\n"); // Fallback if no srt
+
+    if (!srtContent) {
+      alert("请先生成或加载歌词");
+      return;
+    }
+
+    setSummarizing(true);
+    console.log("🤖 Starting AI Summary request...", {
+      guid: musicInfo.guid,
+      model: settings.llmModel,
+      apiBase: settings.llmApiBase,
+    });
+
+    try {
+      const res = await fetch(`${settings.apiUrl}/api/summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guid: musicInfo.guid,
+          srtContent: srtContent,
+          apiKey: settings.llmApiKey,
+          apiBase: settings.llmApiBase,
+          model: settings.llmModel,
+        }),
+      });
+
+      console.log("📡 API Response received, status:", res.status);
+      const data = await res.json();
+      console.log("📦 API Data decoded:", data);
+
+      if (data.success) {
+        console.log("✨ Summary generated successfully!");
+        // Update current music info with summary
+        usePlayerStore.setState((state) => ({
+          musicInfo: { ...state.musicInfo, summary: data.summary },
+        }));
+
+        // Also update in episodes list
+        setPodcastEpisodes((prev) =>
+          prev.map((ep) =>
+            ep.guid === musicInfo.guid ? { ...ep, summary: data.summary } : ep,
+          ),
+        );
+      } else {
+        alert(data.message || "生成摘要失败");
+      }
+    } catch (e) {
+      console.error("Summary error:", e);
+      alert("生成摘要请求失败");
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   const handleDownload = async (episode: any, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -740,6 +893,9 @@ function App() {
       setAudio(playUrl, {
         name: episode.title || currentChannel?.name || "Podcast",
         artist: currentChannel?.author || "Podcast",
+        guid: episode.guid,
+        summary: episode.summary,
+        srtContent: episode.srt_content,
       });
 
       // Load lyrics if available in episode data
@@ -748,13 +904,22 @@ function App() {
         setLyrics(parseSrt(episode.srt_content));
       } else {
         setLyrics([]);
-        // Auto-transcribe if cached locally but no lyrics
-        if (episode.local_audio_path) {
-          console.log(
-            "Auto-transcribing local file:",
-            episode.local_audio_path,
-          );
-          performTranscription(episode.local_audio_path, episode.guid);
+
+        // 自动加入转录队列（后台异步处理）
+        if (episode.audioUrl) {
+          console.log("🎙️ Adding to transcription queue:", episode.title);
+          axios
+            .post(`${settings.apiUrl}/api/queue-transcription`, {
+              guid: episode.guid,
+              audioUrl: episode.audioUrl,
+              title: episode.title,
+            })
+            .then(() => {
+              console.log("✅ Added to transcription queue");
+            })
+            .catch((error: unknown) => {
+              console.error("❌ Failed to queue transcription:", error);
+            });
         }
       }
 
@@ -907,6 +1072,10 @@ function App() {
         isPlaying={isPlaying}
         isLoading={isLoadingAudio}
         isTranscribing={isTranscribing}
+        isSummarizing={isSummarizing}
+        onSummarize={handleSummarize}
+        playbackRate={usePlayerStore((state) => state.playbackRate)}
+        setPlaybackRate={usePlayerStore((state) => state.setPlaybackRate)}
         togglePlay={togglePlay}
         lyrics={lyrics}
         activeIndex={activeIndex}

@@ -10,6 +10,10 @@ interface PlayerPanelProps {
   isPlaying: boolean;
   isLoading: boolean;
   isTranscribing: boolean;
+  isSummarizing: boolean;
+  playbackRate: number;
+  setPlaybackRate: (rate: number) => void;
+  onSummarize: () => void;
   togglePlay: () => void;
   lyrics: any[];
   activeIndex: number;
@@ -35,6 +39,10 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
   isPlaying,
   isLoading,
   isTranscribing,
+  isSummarizing,
+  playbackRate,
+  setPlaybackRate,
+  onSummarize,
   togglePlay,
   lyrics,
   activeIndex,
@@ -54,9 +62,8 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        // The margin is already handled by .glass-card in index.css
       }}>
-      {/* Cover & Title - Matching index.css classes */}
+      {/* Cover & Title */}
       <div
         className={`album-art ${isPlaying ? "playing" : ""}`}
         onClick={handleOpenMusic}
@@ -84,6 +91,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
         )}
       </div>
 
+      {/* Track Info */}
       <div className="track-info">
         <div className="track-name" title={musicInfo.name}>
           {musicInfo.name || "未播放"}
@@ -91,35 +99,117 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
         <div className="artist-name" title={musicInfo.artist}>
           {musicInfo.artist || "未知艺术家"}
         </div>
-        {isTranscribing && (
+
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            marginTop: "8px",
+            flexWrap: "wrap",
+          }}>
+          {isTranscribing && (
+            <div
+              style={{
+                padding: "4px 12px",
+                background: "rgba(245, 87, 108, 0.2)",
+                border: "1px solid rgba(245, 87, 108, 0.4)",
+                borderRadius: "12px",
+                fontSize: "0.75rem",
+                color: "#f5576c",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{ animation: "spin 1s linear infinite" }}>
+                <circle cx="12" cy="12" r="10" opacity="0.25" />
+                <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+              </svg>
+              转录中...
+            </div>
+          )}
+
+          {lyrics.length > 0 && !musicInfo.summary && !isSummarizing && (
+            <button
+              onClick={onSummarize}
+              style={{
+                padding: "4px 12px",
+                background: "linear-gradient(45deg, #f5576c 0%, #f093fb 100%)",
+                border: "none",
+                borderRadius: "12px",
+                fontSize: "0.75rem",
+                color: "#fff",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}>
+              ✨ 生成 AI 摘要
+            </button>
+          )}
+
+          {isSummarizing && (
+            <div
+              style={{
+                padding: "4px 12px",
+                background: "rgba(255, 255, 255, 0.1)",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                borderRadius: "12px",
+                fontSize: "0.75rem",
+                color: "#fff",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{ animation: "spin 1s linear infinite" }}>
+                <circle cx="12" cy="12" r="10" opacity="0.25" />
+                <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+              </svg>
+              AI 摘要生成中...
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* AI Summary Content */}
+      {musicInfo.summary && (
+        <div
+          style={{
+            margin: "15px 20px 0",
+            padding: "12px",
+            background: "rgba(255,255,255,0.05)",
+            borderRadius: "8px",
+            border: "1px solid rgba(255,255,255,0.1)",
+            fontSize: "0.85rem",
+            color: "rgba(255,255,255,0.8)",
+            maxHeight: "100px",
+            overflowY: "auto",
+            lineHeight: "1.5",
+          }}
+          className="custom-scrollbar">
           <div
             style={{
-              marginTop: "8px",
-              padding: "4px 12px",
-              background: "rgba(245, 87, 108, 0.2)",
-              border: "1px solid rgba(245, 87, 108, 0.4)",
-              borderRadius: "12px",
+              color: "#f093fb",
+              fontWeight: "bold",
+              marginBottom: "4px",
               fontSize: "0.75rem",
-              color: "#f5576c",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
             }}>
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              style={{ animation: "spin 1s linear infinite" }}>
-              <circle cx="12" cy="12" r="10" opacity="0.25" />
-              <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
-            </svg>
-            AI 生成歌词中...
+            🤖 AI 内容摘要
           </div>
-        )}
-      </div>
+          {musicInfo.summary}
+        </div>
+      )}
 
       {/* Controls */}
       <div className="controls">
@@ -183,9 +273,48 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
             <path d="M21 13v2a4 4 0 0 1-4 4H3" />
           </svg>
         </button>
+
+        {/* Speed Selector */}
+        <select
+          value={playbackRate}
+          onChange={(e) => setPlaybackRate(parseFloat(e.target.value))}
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "15px",
+            color: "white",
+            padding: "2px 8px",
+            fontSize: "0.75rem",
+            outline: "none",
+            cursor: "pointer",
+            width: "55px",
+            height: "26px",
+            appearance: "none",
+            textAlign: "center",
+          }}
+          title="播放倍速">
+          <option value="0.5" style={{ background: "#222" }}>
+            0.5x
+          </option>
+          <option value="0.75" style={{ background: "#222" }}>
+            0.75x
+          </option>
+          <option value="1" style={{ background: "#222" }}>
+            1.0x
+          </option>
+          <option value="1.25" style={{ background: "#222" }}>
+            1.25x
+          </option>
+          <option value="1.5" style={{ background: "#222" }}>
+            1.5x
+          </option>
+          <option value="2" style={{ background: "#222" }}>
+            2.0x
+          </option>
+        </select>
       </div>
 
-      {/* Progress Section - Matching index.css structure */}
+      {/* Progress Section */}
       <div
         className="progress-bar"
         onMouseDown={handleSeek}
@@ -193,9 +322,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
         style={{ cursor: "pointer" }}>
         <div
           className="progress-fill"
-          style={{
-            width: `${(currentTime / (duration || 1)) * 100}%`,
-          }}
+          style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
         />
       </div>
 

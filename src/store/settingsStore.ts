@@ -12,6 +12,9 @@ interface PlayerSettings {
   lyricOffset: number; // in seconds, can be positive or negative
   audioDeviceId: string;
   apiUrl: string;
+  llmApiKey: string;
+  llmApiBase: string;
+  llmModel: string;
 }
 
 interface SettingsState extends PlayerSettings {
@@ -31,6 +34,9 @@ export const useSettingsStore = create<SettingsState>()(
       lyricOffset: 0,
       audioDeviceId: 'default',
       apiUrl: 'http://localhost:8080',
+      llmApiKey: '',
+      llmApiBase: 'https://api.moonshot.cn/v1',
+      llmModel: 'moonshot-v1-8k',
       updateSettings: (newSettings) => {
         if (newSettings.apiUrl) {
           console.log('🌐 API URL Updated to:', newSettings.apiUrl);

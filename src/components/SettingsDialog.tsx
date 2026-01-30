@@ -210,6 +210,72 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               />
             </div>
             <div className="setting-item">
+              <label>AI 摘要 API Key (OpenAI 兼容)</label>
+              <input
+                type="password"
+                value={settings.llmApiKey}
+                onChange={(e) =>
+                  settings.updateSettings({ llmApiKey: e.target.value })
+                }
+                placeholder="sk-..."
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: "4px",
+                  color: "white",
+                  outline: "none",
+                  marginTop: "4px",
+                  fontSize: "0.8rem",
+                }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>AI 摘要 API Proxy (可选)</label>
+              <input
+                type="text"
+                value={settings.llmApiBase}
+                onChange={(e) =>
+                  settings.updateSettings({ llmApiBase: e.target.value })
+                }
+                placeholder="https://api.openai.com/v1"
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: "4px",
+                  color: "white",
+                  outline: "none",
+                  marginTop: "4px",
+                  fontSize: "0.8rem",
+                }}
+              />
+            </div>
+            <div className="setting-item">
+              <label>AI 模型 (Model)</label>
+              <input
+                type="text"
+                value={settings.llmModel}
+                onChange={(e) =>
+                  settings.updateSettings({ llmModel: e.target.value })
+                }
+                placeholder="moonshot-v1-8k"
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: "4px",
+                  color: "white",
+                  outline: "none",
+                  marginTop: "4px",
+                  fontSize: "0.8rem",
+                }}
+              />
+            </div>
+            <div className="setting-item">
               <label>输出设备</label>
               <select
                 value={settings.audioDeviceId}

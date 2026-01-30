@@ -4,6 +4,9 @@ import type { LyricLine } from '../utils/lrcParser';
 interface MusicInfo {
   name: string;
   artist: string;
+  guid?: string;
+  summary?: string;
+  srtContent?: string;
 }
 
 interface PlayerState {
@@ -15,6 +18,7 @@ interface PlayerState {
   duration: number;
   activeIndex: number;
   isTranscribing: boolean;
+  playbackRate: number;
   
   setAudio: (path: string, info: MusicInfo) => void;
   setLyrics: (lyrics: LyricLine[]) => void;
@@ -23,6 +27,7 @@ interface PlayerState {
   setDuration: (duration: number) => void;
   setActiveIndex: (index: number) => void;
   setTranscribing: (status: boolean) => void;
+  setPlaybackRate: (rate: number) => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
@@ -34,6 +39,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   duration: 0,
   activeIndex: -1,
   isTranscribing: false,
+  playbackRate: 1.0,
 
   setAudio: (path, info) => set({ audioPath: path, musicInfo: info, isPlaying: false, currentTime: 0 }),
   setLyrics: (lyrics) => set({ lyrics }),
@@ -42,4 +48,5 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   setDuration: (duration) => set({ duration }),
   setActiveIndex: (activeIndex) => set({ activeIndex }),
   setTranscribing: (isTranscribing) => set({ isTranscribing }),
+  setPlaybackRate: (playbackRate) => set({ playbackRate }),
 }));

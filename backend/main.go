@@ -12,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/mmcdole/gofeed"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"sort"
@@ -41,47 +43,335 @@ type Episode struct {
 	AudioURL      string    `json:"audioUrl"` // Standardized to matches frontend expectation
 	Duration      string    `json:"duration"`
 	LocalAudioPath string   `json:"local_audio_path"`
-	SrtContent    string    `json:"srt_content"`
+	SrtContent    string    `json:"srt_content" gorm:"type:text"`
 	Summary       string    `json:"summary" gorm:"type:text"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// 转录任务
+type TranscriptionTask struct {
+	GUID      string
+	AudioURL  string
+	LocalPath string
+	Title     string
+	AddedAt   time.Time
+}
+
+// 转录队列
+type TranscriptionQueue struct {
+	tasks    []TranscriptionTask
+	mu       sync.Mutex
+	processing bool
+}
+
 var db *gorm.DB
+var transcriptionQueue *TranscriptionQueue
+
 
 func initDB() {
 	var err error
-	if err := os.MkdirAll("data", 0755); err != nil {
-		log.Fatal("Failed to create data directory:", err)
+	
+	// 从环境变量读取数据库类型，默认为 sqlite
+	dbType := os.Getenv("DB_TYPE")
+	if dbType == "" {
+		dbType = "sqlite"
 	}
 	
-	db, err = gorm.Open(sqlite.Open("data/molten.db"), &gorm.Config{})
-	if err != nil {
-		log.Fatal("failed to connect database:", err)
+	switch dbType {
+	case "mysql":
+		// MySQL 配置
+		// 格式: user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True&loc=Local
+		dsn := os.Getenv("DB_DSN")
+		if dsn == "" {
+			// 默认配置
+			dsn = "root:password@tcp(localhost:3306)/molten_music?charset=utf8mb4&parseTime=True&loc=Local"
+			log.Printf("⚠️  Using default MySQL DSN. Set DB_DSN environment variable for custom config.")
+		}
+		
+		log.Printf("📊 Connecting to MySQL database...")
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		if err != nil {
+			log.Fatal("❌ Failed to connect to MySQL database:", err)
+		}
+		log.Printf("✅ Connected to MySQL database")
+		
+	case "sqlite":
+		// SQLite 配置
+		if err := os.MkdirAll("data", 0755); err != nil {
+			log.Fatal("Failed to create data directory:", err)
+		}
+		
+		dbPath := os.Getenv("DB_PATH")
+		if dbPath == "" {
+			dbPath = "data/molten.db"
+		}
+		
+		log.Printf("📊 Connecting to SQLite database: %s", dbPath)
+		db, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+		if err != nil {
+			log.Fatal("❌ Failed to connect to SQLite database:", err)
+		}
+		log.Printf("✅ Connected to SQLite database")
+		
+	default:
+		log.Fatalf("❌ Unsupported database type: %s (supported: sqlite, mysql)", dbType)
 	}
 
 	// Auto Migrate
+	log.Printf("🔄 Running database migrations...")
 	err = db.AutoMigrate(&Channel{}, &Episode{})
 	if err != nil {
-		log.Fatal("failed to migrate database:", err)
+		log.Fatal("❌ Failed to migrate database:", err)
 	}
+	log.Printf("✅ Database migrations completed")
 
 	// Seed initial channels if empty
-	initialChannels := []Channel{
-		{ID: "the-daily", Name: "The Daily", Author: "The New York Times", RSS: "https://feeds.simplecast.com/54nAGcIl", Description: "This is how the news should sound."},
-		{ID: "crime-junkie", Name: "Crime Junkie", Author: "audiochuck", RSS: "https://feeds.simplecast.com/qm_9xx0g", Description: "If you can never get enough true crime... Congratulations, you’re a Crime Junkie!"},
-		{ID: "pod-save-america", Name: "Pod Save America", Author: "Crooked Media", RSS: "https://feeds.simplecast.com/dxZsm5kX", Description: "A political podcast for people who aren’t ready to give up yet."},
-		{ID: "mel-robbins", Name: "The Mel Robbins Podcast", Author: "Mel Robbins", RSS: "https://feeds.simplecast.com/UCwaTX1J", Description: "Systems to change your life from the global expert on behavior change."},
-		{ID: "allearsenglish", Name: "All Ears English", Author: "All Ears English", RSS: "https://feeds.megaphone.fm/allearsenglish", Description: "Are you looking for a new way to learn English?"},
-		{ID: "techmeme-ride-home", Name: "Techmeme Ride Home", Author: "Techmeme", RSS: "https://rsshub.app/spotify/show/6qXldSz1Ulq1Nvj2JK5kSR", Description: "The day's tech news, every day at 5pm ET."},
-		{ID: "gcores", Name: "机核 GCORES", Author: "GCORES", RSS: "https://wiki.dio.wtf/gcores", Description: "Share the core culture of games."},
-		{ID: "vergecast", Name: "The Vergecast", Author: "The Verge", RSS: "https://feeds.megaphone.fm/vergecast", Description: "The flagship podcast of The Verge."},
+	var count int64
+	db.Model(&Channel{}).Count(&count)
+	if count == 0 {
+		log.Printf("🌱 Seeding initial channels...")
+		initialChannels := []Channel{
+			{ID: "the-daily", Name: "The Daily", Author: "The New York Times", RSS: "https://feeds.simplecast.com/54nAGcIl", Description: "This is how the news should sound."},
+			{ID: "crime-junkie", Name: "Crime Junkie", Author: "audiochuck", RSS: "https://feeds.simplecast.com/qm_9xx0g", Description: "If you can never get enough true crime... Congratulations, you're a Crime Junkie!"},
+			{ID: "pod-save-america", Name: "Pod Save America", Author: "Crooked Media", RSS: "https://feeds.simplecast.com/dxZsm5kX", Description: "A political podcast for people who aren't ready to give up yet."},
+			{ID: "mel-robbins", Name: "The Mel Robbins Podcast", Author: "Mel Robbins", RSS: "https://feeds.simplecast.com/UCwaTX1J", Description: "Systems to change your life from the global expert on behavior change."},
+			{ID: "allearsenglish", Name: "All Ears English", Author: "All Ears English", RSS: "https://feeds.megaphone.fm/allearsenglish", Description: "Are you looking for a new way to learn English?"},
+			{ID: "techmeme-ride-home", Name: "Techmeme Ride Home", Author: "Techmeme", RSS: "https://rsshub.app/spotify/show/6qXldSz1Ulq1Nvj2JK5kSR", Description: "The day's tech news, every day at 5pm ET."},
+			{ID: "gcores", Name: "机核 GCORES", Author: "GCORES", RSS: "https://wiki.dio.wtf/gcores", Description: "Share the core culture of games."},
+			{ID: "vergecast", Name: "The Vergecast", Author: "The Verge", RSS: "https://feeds.megaphone.fm/vergecast", Description: "The flagship podcast of The Verge."},
+		}
+
+		for _, ch := range initialChannels {
+			db.Where(Channel{ID: ch.ID}).FirstOrCreate(&ch)
+		}
+		log.Printf("✅ Seeded %d channels", len(initialChannels))
+	}
+}
+
+// 初始化转录队列
+func initTranscriptionQueue() {
+	transcriptionQueue = &TranscriptionQueue{
+		tasks:      make([]TranscriptionTask, 0),
+		processing: false,
+	}
+	log.Printf("🎙️ Transcription queue initialized")
+	
+	// 启动后台处理器
+	go transcriptionWorker()
+}
+
+// 添加任务到队列
+func (q *TranscriptionQueue) AddTask(task TranscriptionTask) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	
+	// 检查是否已经在队列中
+	for _, t := range q.tasks {
+		if t.GUID == task.GUID {
+			log.Printf("⏭️  Task already in queue: %s", task.Title)
+			return
+		}
+	}
+	
+	// 检查是否已经有字幕
+	var episode Episode
+	if err := db.Where("guid = ?", task.GUID).First(&episode).Error; err == nil {
+		if episode.SrtContent != "" {
+			log.Printf("✅ Episode already has subtitles: %s", task.Title)
+			return
+		}
+	}
+	
+	q.tasks = append(q.tasks, task)
+	log.Printf("➕ Added to transcription queue: %s (Queue size: %d)", task.Title, len(q.tasks))
+}
+
+// 获取下一个任务
+func (q *TranscriptionQueue) GetNextTask() *TranscriptionTask {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	
+	if len(q.tasks) == 0 {
+		return nil
+	}
+	
+	task := q.tasks[0]
+	q.tasks = q.tasks[1:]
+	return &task
+}
+
+// 后台转录处理器
+func transcriptionWorker() {
+	log.Printf("🤖 Transcription worker started")
+	
+	for {
+		task := transcriptionQueue.GetNextTask()
+		if task == nil {
+			time.Sleep(5 * time.Second) // 没有任务时等待
+			continue
+		}
+		
+		log.Printf("🎬 Processing transcription task: %s", task.Title)
+		
+		// 确保音频文件已下载
+		if task.LocalPath == "" || !fileExists(task.LocalPath) {
+			log.Printf("📥 Downloading audio for: %s", task.Title)
+			localPath, err := downloadAudio(task.AudioURL, task.GUID)
+			if err != nil {
+				log.Printf("❌ Failed to download audio: %v", err)
+				continue
+			}
+			task.LocalPath = localPath
+			
+			// 更新数据库
+			db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("local_audio_path", localPath)
+		}
+		
+		// 执行转录
+		srtContent, err := performTranscription(task.LocalPath)
+		if err != nil {
+			log.Printf("❌ Transcription failed for %s: %v", task.Title, err)
+			continue
+		}
+		
+		// 保存到数据库
+		result := db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("srt_content", srtContent)
+		if result.Error != nil {
+			log.Printf("❌ Failed to save SRT for %s: %v", task.Title, result.Error)
+		} else {
+			log.Printf("✅ Transcription completed and saved: %s", task.Title)
+		}
+	}
+}
+
+// 辅助函数：检查文件是否存在
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// 下载音频文件（独立函数，供队列使用）
+func downloadAudio(audioURL, guid string) (string, error) {
+	cacheDir := "media_cache"
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create cache dir: %v", err)
 	}
 
-	for _, ch := range initialChannels {
-		// Use Clause(clause.OnConflict{UpdateAll: true}) to update if exists, or just FirstOrCreate to only insert if missing
-		db.Where(Channel{ID: ch.ID}).FirstOrCreate(&ch)
+	// Parse URL to get extension
+	parsedURL, err := url.Parse(audioURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL: %v", err)
 	}
+	
+	ext := filepath.Ext(parsedURL.Path)
+	if ext == "" {
+		ext = ".mp3"
+	}
+	
+	fileName := fmt.Sprintf("%s%s", guid, ext)
+	fileName = strings.ReplaceAll(fileName, "/", "_")
+	fileName = strings.ReplaceAll(fileName, "?", "_")
+	fileName = strings.ReplaceAll(fileName, "&", "_")
+	localPath := filepath.Join(cacheDir, fileName)
+
+	// Check if already exists
+	if fileExists(localPath) {
+		return localPath, nil
+	}
+
+	// Download
+	out, err := os.Create(localPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create file: %v", err)
+	}
+	defer out.Close()
+
+	resp, err := http.Get(audioURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to download: %v", err)
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to write file: %v", err)
+	}
+
+	log.Printf("✅ Downloaded audio: %s (%.2f MB)", fileName, float64(getFileSize(localPath))/(1024*1024))
+	return localPath, nil
+}
+
+// 执行转录（独立函数，供队列使用）
+func performTranscription(localPath string) (string, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+
+	fileInfo, _ := file.Stat()
+	
+	// Prepare multipart form
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	
+	part, err := writer.CreateFormFile("file", filepath.Base(localPath))
+	if err != nil {
+		return "", fmt.Errorf("failed to create form file: %v", err)
+	}
+	
+	_, err = io.Copy(part, file)
+	if err != nil {
+		return "", fmt.Errorf("failed to copy file content: %v", err)
+	}
+	
+	writer.WriteField("model", "base")
+	writer.WriteField("response_format", "srt")
+	writer.Close()
+
+	// Call Whisper API
+	whisperURL := fmt.Sprintf("%s/v1/audio/transcriptions", WHISPER_SERVER_URL)
+	proxyReq, err := http.NewRequest("POST", whisperURL, body)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
+	}
+	proxyReq.Header.Set("Content-Type", writer.FormDataContentType())
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	start := time.Now()
+	
+	log.Printf("🚀 Sending to Whisper (%.2f MB)...", float64(fileInfo.Size())/(1024*1024))
+	
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		return "", fmt.Errorf("whisper request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("whisper returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	srtContent, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %v", err)
+	}
+
+	duration := time.Since(start)
+	log.Printf("✅ Transcription completed in %v (%d bytes)", duration, len(srtContent))
+	
+	return string(srtContent), nil
+}
+
+// 获取文件大小
+func getFileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 func enableCors(w *http.ResponseWriter) {
@@ -118,26 +408,46 @@ func channelEpisodesHandler(w http.ResponseWriter, r *http.Request) {
     }
     channelID := parts[3]
 
-    // Check if we need to refresh (simple logic: refresh if no episodes or query param ?refresh=true)
+    // 获取频道信息
+    var channel Channel
+    if result := db.First(&channel, "id = ?", channelID); result.Error != nil {
+         http.Error(w, "Channel not found", http.StatusNotFound)
+         return
+    }
+
+    // 智能刷新逻辑：
+    // 1. 明确请求刷新 (?refresh=true)
+    // 2. 没有任何节目数据
+    // 3. 频道超过 1 小时未更新
     refresh := r.URL.Query().Get("refresh") == "true"
     var count int64
     db.Model(&Episode{}).Where("channel_id = ?", channelID).Count(&count)
-
-    if count == 0 || refresh {
-        // Fetch RSS
-        var channel Channel
-        if result := db.First(&channel, "id = ?", channelID); result.Error != nil {
-             http.Error(w, "Channel not found", http.StatusNotFound)
-             return
+    
+    // 检查最后更新时间
+    needsRefresh := refresh || count == 0
+    if !needsRefresh {
+        // 检查频道的 updated_at 时间
+        timeSinceUpdate := time.Since(channel.UpdatedAt)
+        if timeSinceUpdate > 1*time.Hour {
+            needsRefresh = true
+            log.Printf("📡 Channel %s hasn't been updated for %v, refreshing...", channelID, timeSinceUpdate.Round(time.Minute))
         }
+    }
 
+    if needsRefresh {
+        log.Printf("🔄 Fetching latest episodes for channel: %s", channel.Name)
+        
         fp := gofeed.NewParser()
         feed, err := fp.ParseURL(channel.RSS)
         if err != nil {
-            log.Printf("Failed to parse RSS for %s: %v", channel.ID, err)
-            // If parse fails, we might still serve cached episodes
+            log.Printf("❌ Failed to parse RSS for %s: %v", channel.ID, err)
+            // If parse fails, we still serve cached episodes
         } else {
+            log.Printf("✅ Fetched %d items from RSS feed: %s", len(feed.Items), channel.Name)
+            
             // Save episodes
+            newCount := 0
+            updatedCount := 0
             for _, item := range feed.Items {
                 pubDate := time.Now()
                 if item.PublishedParsed != nil {
@@ -149,6 +459,11 @@ func channelEpisodesHandler(w http.ResponseWriter, r *http.Request) {
                     audioUrl = item.Enclosures[0].URL
                 }
 
+                // 检查是否已存在 (使用 Find 避免 record not found 错误日志)
+                var existing Episode
+                result := db.Where("guid = ?", item.GUID).Limit(1).Find(&existing)
+                isNew := result.RowsAffected == 0
+
                 episode := Episode{
                     GUID:        item.GUID,
                     ChannelID:   channelID,
@@ -158,12 +473,26 @@ func channelEpisodesHandler(w http.ResponseWriter, r *http.Request) {
                     PubDate:     pubDate,
                     AudioURL:    audioUrl,
                 }
+                
                 // Upsert
-                db.Clauses(clause.OnConflict{
+                result = db.Clauses(clause.OnConflict{
                     Columns:   []clause.Column{{Name: "guid"}},
                     DoUpdates: clause.AssignmentColumns([]string{"title", "description", "audio_url", "pub_date", "updated_at"}),
                 }).Create(&episode)
+                
+                if result.Error == nil {
+                    if isNew {
+                        newCount++
+                    } else {
+                        updatedCount++
+                    }
+                }
             }
+            
+            // 更新频道的 updated_at 时间
+            db.Model(&channel).Update("updated_at", time.Now())
+            
+            log.Printf("📊 Channel %s: %d new episodes, %d updated", channel.Name, newCount, updatedCount)
         }
     }
 
@@ -187,7 +516,7 @@ func channelEpisodesHandler(w http.ResponseWriter, r *http.Request) {
             srtCount++
         }
     }
-    log.Printf("Fetched %d episodes for channel %s. %d have subtitles.", len(episodes), channelID, srtCount)
+    log.Printf("📋 Fetched %d episodes for channel %s. %d have subtitles.", len(episodes), channelID, srtCount)
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(map[string]interface{}{
@@ -572,10 +901,12 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 	fileInfo, _ := file.Stat()
 	log.Printf("📂 Processing file: %s (Size: %.2f MB)", req.AudioPath, float64(fileInfo.Size())/(1024*1024))
 
-	// 2. Prepare multipart form
+	// 2. Prepare multipart form (OpenAI API format)
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("audio_file", filepath.Base(req.AudioPath))
+	
+	// Add file field (OpenAI API uses "file" not "audio_file")
+	part, err := writer.CreateFormFile("file", filepath.Base(req.AudioPath))
 	if err != nil {
 		log.Printf("❌ Failed to create multipart form: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to create form file: %v", err), http.StatusInternalServerError)
@@ -587,12 +918,18 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to copy file content: %v", err), http.StatusInternalServerError)
 		return
 	}
+	
+	// Add required OpenAI API parameters
+	writer.WriteField("model", "base")  // Use the model available on the server
+	writer.WriteField("response_format", "srt")  // Request SRT format output
+	
 	writer.Close()
 
-	// 3. Call Whisper API
-	whisperURL := fmt.Sprintf("%s/asr?task=transcribe&output=srt", WHISPER_SERVER_URL)
-	log.Printf("� Constructed Whisper URL: %s", whisperURL)
-	log.Printf("�🚀 Uploading to Whisper server: %s (File size: %.2f MB)", WHISPER_SERVER_URL, float64(fileInfo.Size())/(1024*1024))
+
+	// 3. Call Whisper API (OpenAI-compatible endpoint)
+	whisperURL := fmt.Sprintf("%s/v1/audio/transcriptions", WHISPER_SERVER_URL)
+	log.Printf("🔗 Constructed Whisper URL: %s", whisperURL)
+	log.Printf("🚀 Uploading to Whisper server: %s (File size: %.2f MB)", WHISPER_SERVER_URL, float64(fileInfo.Size())/(1024*1024))
 	
 	proxyReq, err := http.NewRequest("POST", whisperURL, body)
 	if err != nil {
@@ -658,8 +995,56 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// 队列转录触发 API
+func queueTranscriptionHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		GUID     string `json:"guid"`
+		AudioURL string `json:"audioUrl"`
+		Title    string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// 获取节目信息
+	var episode Episode
+	if err := db.Where("guid = ?", req.GUID).First(&episode).Error; err != nil {
+		http.Error(w, "Episode not found", http.StatusNotFound)
+		return
+	}
+
+	// 添加到队列
+	task := TranscriptionTask{
+		GUID:      req.GUID,
+		AudioURL:  req.AudioURL,
+		LocalPath: episode.LocalAudioPath,
+		Title:     req.Title,
+		AddedAt:   time.Now(),
+	}
+	
+	transcriptionQueue.AddTask(task)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Added to transcription queue",
+	})
+}
+
 func main() {
 	initDB()
+	initTranscriptionQueue()
 
 	http.HandleFunc("/api/channels", listChannelsHandler)
     http.HandleFunc("/api/channels/", channelEpisodesHandler) // Matches /api/channels/{id}/episodes... technically matches anything after
@@ -667,6 +1052,7 @@ func main() {
     http.HandleFunc("/api/save-srt", saveSrtHandler)
     http.HandleFunc("/api/transcribe", transcribeHandler)
     http.HandleFunc("/api/summary", summarizeHandler)
+    http.HandleFunc("/api/queue-transcription", queueTranscriptionHandler)
     
     // Serve cached media files with CORS
     fs := http.FileServer(http.Dir("media_cache"))

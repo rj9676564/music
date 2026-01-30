@@ -1,88 +1,328 @@
-# Molten Music 🎵
+# Molten Music - 播客管理系统
 
-Molten Music is a modern, cross-platform desktop music and podcast player built with Electron, React, and Go. It features a futuristic "liquid metal" design, powerful desktop lyric capabilities, RSS podcast integration, and offline AI-powered transcription.
+一个功能完整的播客管理和播放系统，支持自动转录、AI 摘要和多种部署方式。
 
-![Molten Music Icon](public/icon.png)
+## ✨ 主要功能
 
-## ✨ Features
+- 🎵 **播客管理**：订阅、下载、播放播客
+- 🎙️ **自动转录**：集成 Whisper AI 自动生成字幕
+- 🤖 **AI 摘要**：使用 LLM 生成播客内容摘要
+- 💾 **灵活存储**：支持 SQLite 和 MySQL 数据库
+- 🐳 **Docker 部署**：一键启动，支持多种配置
+- 🖥️ **桌面应用**：基于 Electron 的跨平台客户端
 
-- **Futuristic UI**: Glassmorphism design with fluid animations and a "molten" aesthetic.
-- **Desktop Lyrics**: 
-  - Floating desktop lyric window with transparent mode.
-  - Karaoke-style word-by-word highlighting (supports .lrc and .srt).
-  - "Lock" mode (click-through) to work without interruption.
-- **RSS Podcast System**: 
-  - Subscribe to your favorite tech and news podcasts (RSSHub supported).
-  - Built-in podcasts: The Daily, Techmeme Ride Home, GCORES, All Ears English, and more.
-  - One-click download and offline cache management.
-- **AI-Powered Transcription**:
-  - Integrated with OpenAI Whisper.
-  - One-click "AI Generate Lyrics" for songs or podcasts without lyric files.
-  - **Option 3 Optimization**: Transcriptions are stored directly in the database, saving disk space and simplifying deployment.
-- **Smart Audio Engine**:
-  - **Audio Output Selection**: Switch between speakers, headphones, or Bluetooth devices directly in the app.
-  - **Loop Playback**: High-visibility toggle for repeating your favorite tracks or episodes.
-  - **Lyric Sync Tool**: Quick +/- 0.5s offset adjustment buttons.
+## 🚀 快速开始
 
-## 🛠️ Tech Stack
+### 方式 1: 使用 Makefile（推荐）
 
-- **Frontend**: [Electron](https://www.electronjs.org/), [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/)
-- **Backend**: [Go](https://go.dev/) (SQLite + GORM)
-- **State Management**: [Zustand](https://github.com/pmndrs/zustand)
-- **Build Tool**: [Vite](https://vitejs.dev/)
-- **CI/CD**: GitHub Actions (Docker Build & Multi-platform Release)
+```bash
+# 查看所有命令
+make help
 
-## 🚀 Getting Started
+# 启动 SQLite 版本（开发环境）
+make sqlite
 
-### Prerequisites
-- Node.js (v20+)
-- Go (v1.23+)
-- Docker (for deployment)
+# 启动 MySQL 版本（生产环境）
+make mysql
 
-### 1. Local Development
+# 查看日志
+make logs
 
-#### Start Backend
+# 停止服务
+make stop
+```
+
+### 方式 2: 使用 Docker Compose
+
+```bash
+# SQLite 版本
+docker-compose --profile sqlite up -d
+
+# MySQL 版本
+docker-compose --profile mysql up -d
+
+# 停止
+docker-compose --profile sqlite down
+# 或
+docker-compose --profile mysql down
+```
+
+### 方式 3: 本地开发
+
+```bash
+# 启动后端
+cd backend
+go run main.go
+
+# 启动前端（新终端）
+cd ..
+yarn dev
+```
+
+## 📋 系统架构
+
+```
+┌─────────────────┐
+│  Electron 前端  │
+│  (React + TS)   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐      ┌──────────────┐
+│   Go 后端 API   │─────▶│  SQLite/MySQL│
+│   (Port 8080)   │      │   数据库     │
+└────────┬────────┘      └──────────────┘
+         │
+         ├─────────────────┐
+         │                 │
+         ▼                 ▼
+┌─────────────────┐ ┌──────────────┐
+│ Whisper Server  │ │  LLM API     │
+│  (转录服务)     │ │  (摘要服务)  │
+└─────────────────┘ └──────────────┘
+```
+
+## 🗄️ 数据库配置
+
+### SQLite（默认）
+
+```bash
+# 无需配置，直接运行
+go run main.go
+```
+
+### MySQL
+
+```bash
+# 设置环境变量
+export DB_TYPE=mysql
+export DB_DSN="user:password@tcp(host:port)/database?charset=utf8mb4&parseTime=True&loc=Local"
+
+# 运行
+go run main.go
+```
+
+详细配置请查看 [`backend/DATABASE.md`](backend/DATABASE.md)
+
+## 🐳 Docker 部署
+
+### SQLite 版本（单容器）
+
+```bash
+docker-compose --profile sqlite up -d
+```
+
+**特点**：
+- ✅ 快速启动
+- ✅ 数据存储在本地文件
+- ✅ 适合开发和小规模部署
+
+### MySQL 版本（双容器）
+
+```bash
+docker-compose --profile mysql up -d
+```
+
+**特点**：
+- ✅ 更好的性能
+- ✅ 支持高并发
+- ✅ 适合生产环境
+
+详细说明请查看 [`DOCKER.md`](DOCKER.md)
+
+## 🎙️ Whisper 转录服务
+
+### 配置
+
+在 `backend/main.go` 中设置：
+
+```go
+const WHISPER_SERVER_URL = "http://your-whisper-server:9999"
+```
+
+或使用环境变量：
+
+```bash
+export WHISPER_SERVER_URL="http://your-whisper-server:9999"
+```
+
+### 部署 Whisper 服务
+
+参考 [`docker-compose.whisper.yml`](docker-compose.whisper.yml)：
+
+```bash
+docker-compose -f docker-compose.whisper.yml up -d
+```
+
+## 📁 项目结构
+
+```
+molten-music/
+├── backend/              # Go 后端
+│   ├── main.go          # 主程序
+│   ├── Dockerfile       # Docker 镜像
+│   ├── DATABASE.md      # 数据库文档
+│   └── .env.example     # 环境变量示例
+├── electron/            # Electron 主进程
+├── src/                 # React 前端
+├── docker-compose.yml   # Docker 编排
+├── docker-compose.whisper.yml  # Whisper 服务
+├── Makefile            # 快捷命令
+├── DOCKER.md           # Docker 文档
+└── README.md           # 本文件
+```
+
+## 🔧 环境变量
+
+### 后端配置
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `DB_TYPE` | 数据库类型 | `sqlite` |
+| `DB_PATH` | SQLite 路径 | `data/molten.db` |
+| `DB_DSN` | MySQL 连接串 | - |
+| `WHISPER_SERVER_URL` | Whisper 服务地址 | `http://d.mrlb.top:9999` |
+
+### 前端配置
+
+在 `src/store/settingsStore.ts` 中配置：
+
+- API 地址
+- LLM 配置
+- 播放器设置
+
+## 📊 API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/channels` | GET | 获取频道列表 |
+| `/api/channels/:id/episodes` | GET | 获取节目列表 |
+| `/api/download` | POST | 下载音频 |
+| `/api/transcribe` | POST | 转录音频 |
+| `/api/summary` | POST | 生成摘要 |
+| `/media/*` | GET | 流式播放音频 |
+
+## 🛠️ 开发
+
+### 前端开发
+
+```bash
+yarn dev
+```
+
+### 后端开发
+
 ```bash
 cd backend
 go run main.go
 ```
-The backend will start on `http://localhost:8080`.
 
-#### Start Frontend
+### 构建
+
 ```bash
-# In the root directory
-pnpm install
-pnpm dev
+# 前端构建
+yarn build
+
+# 后端构建
+cd backend
+go build -o molten-server
+
+# Docker 构建
+docker-compose build
 ```
 
-### 2. Deployment
+## 📦 依赖
 
-#### Backend (Docker)
-We use **GHCR (GitHub Container Registry)** for hosting backend images.
+### 后端
 
-**Pull & Run:**
+- Go 1.21+
+- GORM (ORM)
+- SQLite/MySQL 驱动
+- gofeed (RSS 解析)
+
+### 前端
+
+- React 18
+- TypeScript
+- Electron
+- Zustand (状态管理)
+- Vite (构建工具)
+
+## 🔐 安全建议
+
+1. **不要提交敏感信息**到 Git
+2. **使用环境变量**存储密码和密钥
+3. **生产环境使用 HTTPS**
+4. **定期备份数据库**
+5. **限制 API 访问**（添加认证）
+
+## 📝 常用命令
+
 ```bash
-docker pull ghcr.io/rj9676564/molten-music-backend:latest
-docker run -d -p 8080:8080 -v ./molten-data:/app/data ghcr.io/rj9676564/molten-music-backend:latest
+# 启动开发环境
+make sqlite
+
+# 查看日志
+make logs
+
+# 备份数据
+make backup
+
+# 重启服务
+make restart
+
+# 停止服务
+make stop
+
+# 清理数据（谨慎使用）
+make clean
 ```
 
-**Build via GitHub Actions:**
-- Push a tag starting with `b*` (e.g., `b1.0.0`) to trigger a backend Docker build.
+## 🐛 故障排查
 
-#### Frontend (Electron)
-**Build locally:**
+### 后端无法启动
+
 ```bash
-pnpm build         # Common build
-pnpm build:mac-local # Build optimized DMG for Apple Silicon
+# 检查端口占用
+lsof -i :8080
+
+# 查看日志
+docker-compose --profile sqlite logs backend-sqlite
 ```
 
-**Auto Release:**
-- Push a tag starting with `v*` (e.g., `v1.0.0`) to trigger multi-platform production builds and GitHub Releases.
+### 数据库连接失败
 
-## 🤖 AI Logic
-To use the AI transcription feature, a Whisper ASR Webservice is required.
-By default, the backend connects to: `http://xxx/`
-You can modify this in `backend/main.go`.
+```bash
+# MySQL 版本 - 检查 MySQL 状态
+docker-compose --profile mysql logs mysql
 
-## 📄 License
-[MIT](LICENSE)
+# 确认 MySQL 就绪
+docker exec molten-mysql mysqladmin ping -h localhost -u root -prootpassword
+```
+
+### Whisper 转录失败
+
+1. 检查 Whisper 服务是否运行
+2. 确认 URL 配置正确
+3. 查看后端日志中的错误信息
+
+## 📚 文档
+
+- [数据库配置](backend/DATABASE.md)
+- [Docker 部署](DOCKER.md)
+- [环境变量示例](backend/.env.example)
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📄 许可证
+
+MIT License
+
+## 🙏 致谢
+
+- [Whisper](https://github.com/openai/whisper) - 语音识别
+- [faster-whisper-server](https://github.com/fedirz/faster-whisper-server) - Whisper 服务器
+- [GORM](https://gorm.io/) - Go ORM
+- [Electron](https://www.electronjs.org/) - 桌面应用框架

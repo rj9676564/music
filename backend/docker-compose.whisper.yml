@@ -1,0 +1,19 @@
+services:
+  whisper-cpu:
+    image: fedirz/faster-whisper-server:latest-cpu
+    container_name: whisper-cpu
+    ports:
+      - "9000:8000"
+    volumes:
+      - ./models:/root/.cache/huggingface
+    environment:
+      # 使用正确的环境变量格式
+      - WHISPER__MODEL__NAME=base
+      - WHISPER__INFERENCE__DEVICE=cpu
+      - WHISPER__INFERENCE__COMPUTE_TYPE=int8
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G

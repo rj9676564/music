@@ -1,11 +1,63 @@
 version: '3.8'
 
 services:
-  backend:
-    build: .
-    ports:
-      - "8080:8080"
+  # ==========================================
+  # MySQL 数据库（可选）
+  # 只有当 DB_TYPE=mysql 时才需要启动
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: molten-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-molten_music}
+      MYSQL_USER: ${MYSQL_USER:-molten}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-moltenpass}
     volumes:
-      - ./data:/app/data
-      - ./media_cache:/app/media_cache
-    restart: always
+      - mysql_data:/var/lib/mysql
+      - ./backend/mysql-init:/docker-entrypoint-initdb.d
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - mysql  # 使用 --profile mysql 启动
+
+  # ==========================================
+  # 后端服务
+  # 根据 DB_TYPE 环境变量自动选择数据库
+  # ==========================================
+  backend:
+    build: ./backend
+    container_name: molten-backend
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      # SQLite 数据目录（DB_TYPE=sqlite 时使用）
+      - ./backend/data:/app/data
+      # 媒体缓存目录（两种模式都需要）
+      - ./backend/media_cache:/app/media_cache
+    environment:
+      # 数据库配置
+      - DB_TYPE=${DB_TYPE:-sqlite}
+      - DB_PATH=${DB_PATH:-data/molten.db}
+      - DB_DSN=${DB_DSN:-molten:moltenpass@tcp(mysql:3306)/molten_music?charset=utf8mb4&parseTime=True&loc=Local}
+      
+      # Whisper 服务器配置
+      - WHISPER_SERVER_URL=${WHISPER_SERVER_URL:-http://d.mrlb.top:9999}
+      
+      # 其他配置
+      - TZ=${TZ:-Asia/Shanghai}
+    restart: unless-stopped
+    # 如果使用 MySQL，等待 MySQL 就绪
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false  # MySQL 是可选的
+
+volumes:
+  mysql_data:
