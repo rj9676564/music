@@ -186,33 +186,102 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
       {musicInfo.summary && (
         <div
           style={{
-            margin: "15px 20px 0",
-            padding: "12px",
-            background: "rgba(255,255,255,0.05)",
-            borderRadius: "8px",
-            border: "1px solid rgba(255,255,255,0.1)",
-            fontSize: "0.85rem",
-            color: "rgba(255,255,255,0.8)",
-            maxHeight: "100px",
-            overflowY: "auto",
-            lineHeight: "1.5",
-          }}
-          className="custom-scrollbar">
+            minHeight: "48px",
+            margin: "12px 20px 8px",
+            background: "rgba(0, 0, 0, 0.3)",
+            borderRadius: "12px",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            boxShadow: "0 4px 15px rgba(0, 0, 0, 0.2)",
+            backdropFilter: "blur(10px)",
+            position: "relative",
+            maxHeight: "300px",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden", // 关键：确保子元素（包括滚动条）不溢出圆角
+          }}>
           <div
+            className="custom-scrollbar"
             style={{
-              color: "#f093fb",
-              fontWeight: "bold",
-              marginBottom: "4px",
-              fontSize: "0.75rem",
+              overflowY: "auto",
+              padding: "16px",
+
+              paddingRight: "6px", // 给滚动条留点 微调
             }}>
-            🤖 AI 内容摘要
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "8px",
+                paddingBottom: "8px",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+              }}>
+              <div
+                style={{
+                  background:
+                    "linear-gradient(45deg, #f5576c 0%, #f093fb 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  fontWeight: "bold",
+                  fontSize: "0.85rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}>
+                <span style={{ fontSize: "1.1rem" }}>🤖</span> AI 内容精选
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "rgba(255, 255, 255, 0.4)",
+                  cursor: "pointer",
+                  padding: "4px",
+                  fontSize: "1.1rem",
+                  display: "none",
+                }}>
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                whiteSpace: "pre-wrap",
+                textAlign: "justify",
+                fontSize: "0.9rem",
+                color: "rgba(255, 255, 255, 0.9)",
+                lineHeight: "1.6",
+                paddingRight: "8px", // 内容本身右边留白，避免贴着滚动条
+              }}>
+              {musicInfo.summary.split("\n").map((line: string, i: number) => {
+                const parts = line.split(/(\*\*.*?\*\*)/g);
+                return (
+                  <div key={i} style={{ minHeight: line ? "auto" : "8px" }}>
+                    {parts.map((part, j) => {
+                      if (part.startsWith("**") && part.endsWith("**")) {
+                        return (
+                          <strong
+                            key={j}
+                            style={{ color: "#fff", fontWeight: 600 }}>
+                            {part.slice(2, -2)}
+                          </strong>
+                        );
+                      }
+                      return part;
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          {musicInfo.summary}
         </div>
       )}
 
       {/* Controls */}
-      <div className="controls">
+      <div className="controls" style={{ margin: "20px 0" }}>
         <button
           className="nav-btn"
           title="打开歌词文件"

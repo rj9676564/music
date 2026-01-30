@@ -26,7 +26,7 @@ export const ChannelsPanel: React.FC<ChannelsPanelProps> = ({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        padding: "20px",
+        padding: "20px 0 20px 20px", // 右侧不留 padding
         animation: "fadeIn 0.3s ease",
         flexShrink: 0,
       }}>
@@ -36,6 +36,7 @@ export const ChannelsPanel: React.FC<ChannelsPanelProps> = ({
           alignItems: "center",
           marginBottom: "20px",
           justifyContent: "space-between",
+          paddingRight: "20px", // 标题区补上
         }}>
         <h2
           style={{
@@ -61,7 +62,7 @@ export const ChannelsPanel: React.FC<ChannelsPanelProps> = ({
 
       <div
         className="custom-scrollbar"
-        style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
+        style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
         {/* Channels List Content */}
         {loadingChannels ? (
           <div style={{ padding: "20px", textAlign: "center", color: "#888" }}>

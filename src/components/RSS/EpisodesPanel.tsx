@@ -21,7 +21,7 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        padding: "20px",
+        padding: "20px 0 20px 20px", // 右侧不留 padding，让滚动条靠右
         animation: "fadeIn 0.3s ease",
         flexShrink: 0,
       }}>
@@ -31,6 +31,7 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
           alignItems: "center",
           marginBottom: "20px",
           gap: "10px",
+          paddingRight: "20px", // 标题区域补上 padding
         }}>
         <h2
           style={{
@@ -45,7 +46,9 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
 
       <div
         className="custom-scrollbar"
-        style={{ flex: 1, overflowY: "auto", paddingRight: "4px" }}>
+        style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
+        {" "}
+        // 滚动条略微留出边距
         {episodes.map((episode) => (
           <div
             key={episode.guid || episode.title}

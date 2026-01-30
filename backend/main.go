@@ -445,10 +445,17 @@ func channelEpisodesHandler(w http.ResponseWriter, r *http.Request) {
         } else {
             log.Printf("✅ Fetched %d items from RSS feed: %s", len(feed.Items), channel.Name)
             
+            // 优化：如果不是初次导入，只处理最新的 50 条，避免全量更新太慢
+            itemsToProcess := feed.Items
+            if count > 0 && len(itemsToProcess) > 50 {
+                itemsToProcess = itemsToProcess[:50]
+                log.Printf("⚡ Optimization: Only processing latest 50 items (database already has data)")
+            }
+
             // Save episodes
             newCount := 0
             updatedCount := 0
-            for _, item := range feed.Items {
+            for _, item := range itemsToProcess {
                 pubDate := time.Now()
                 if item.PublishedParsed != nil {
                     pubDate = *item.PublishedParsed
