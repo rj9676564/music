@@ -708,6 +708,10 @@ type SummaryRequest struct {
 
 func summarizeHandler(w http.ResponseWriter, r *http.Request) {
 	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -797,6 +801,9 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 
 	prompt := "你是一个专业的播客文稿摘要助手。请根据以下 SRT 格式的转录文本，生成一份简洁生动的内容摘要。要求：1. 概括核心亮点；2. 使用时间轴标记关键话题（如果有的话）；3. 语言通俗易懂；4. 直接输出摘要内容，不要包含转录格式。\n\n文本内容：\n" + textToSummarize
 
+	// Handle API Base URL trailing slash
+	apiBase = strings.TrimSuffix(apiBase, "/")
+
 	payload := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{
@@ -813,7 +820,8 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	// Increase timeout to 120 seconds
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -822,6 +830,7 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		log.Printf("❌ LLM API Error: Status=%d, Body=%s", resp.StatusCode, string(body))
 		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
 	}
 
