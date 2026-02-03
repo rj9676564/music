@@ -627,24 +627,24 @@ function App() {
           (ep: any) => ep.guid === currentGuid,
         );
 
-        if (updatedEpisode?.srt_content && !musicInfo.srtContent) {
-          console.log("✅ Transcription completed! Loading subtitles...");
-
-          // 更新歌词显示
-          setLyrics(parseSrt(updatedEpisode.srt_content));
-
-          // 更新节目列表
+        if (updatedEpisode) {
+          // 如果状态发生了变化，更新列表
           setPodcastEpisodes((prev) =>
             prev.map((ep) =>
               ep.guid === updatedEpisode.guid ? updatedEpisode : ep,
             ),
           );
 
-          // 更新 musicInfo
-          setAudio(audioPath || "", {
-            ...musicInfo,
-            srtContent: updatedEpisode.srt_content,
-          });
+          if (updatedEpisode.srt_content && !musicInfo.srtContent) {
+            console.log("✅ Transcription completed! Loading subtitles...");
+            setLyrics(parseSrt(updatedEpisode.srt_content));
+            
+            // 更新 musicInfo
+            setAudio(audioPath || "", {
+              ...musicInfo,
+              srtContent: updatedEpisode.srt_content,
+            });
+          }
         }
       } catch (error) {
         console.error("Failed to check transcription status:", error);

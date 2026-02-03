@@ -73,12 +73,49 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
               }}>
               {episode.title}
             </div>
-            {episode.pubDate && (
-              <div
-                style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)" }}>
-                {new Date(episode.pubDate).toLocaleDateString("zh-CN")}
-              </div>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {episode.pubDate && (
+                <div
+                  style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)" }}>
+                  {new Date(episode.pubDate).toLocaleDateString("zh-CN")}
+                </div>
+              )}
+              {episode.transcription_status && (
+                <div
+                  style={{
+                    fontSize: "0.65rem",
+                    padding: "1px 4px",
+                    borderRadius: "3px",
+                    background:
+                      episode.transcription_status === "completed"
+                        ? "rgba(76, 175, 80, 0.2)"
+                        : episode.transcription_status === "failed"
+                          ? "rgba(244, 67, 54, 0.2)"
+                          : "rgba(255, 193, 7, 0.2)",
+                    color:
+                      episode.transcription_status === "completed"
+                        ? "#81c784"
+                        : episode.transcription_status === "failed"
+                          ? "#e57373"
+                          : "#ffd54f",
+                    border: `1px solid ${
+                      episode.transcription_status === "completed"
+                        ? "rgba(76, 175, 80, 0.3)"
+                        : episode.transcription_status === "failed"
+                          ? "rgba(244, 67, 54, 0.3)"
+                          : "rgba(255, 193, 7, 0.3)"
+                    }`,
+                  }}>
+                  {episode.transcription_status === "pending"
+                    ? "排队中"
+                    : episode.transcription_status === "processing"
+                      ? "转录中..."
+                      : episode.transcription_status === "completed"
+                        ? "已转录"
+                        : "转录失败"}
+                </div>
+              )}
+            </div>
             <button
               onClick={(e) => onDownloadEpisode(episode, e)}
               title="缓存到本地"

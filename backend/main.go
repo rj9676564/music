@@ -35,16 +35,17 @@ type Channel struct {
 
 type Episode struct {
 	GUID          string    `json:"guid" gorm:"primaryKey"`
-	ChannelID     string    `json:"channel_id" gorm:"index"`
+	ChannelID     string    `json:"channel_id" gorm:"index:idx_channel_pubdate"`
 	Title         string    `json:"title"`
-	Description   string    `json:"description"`
+	Description   string    `json:"description" gorm:"type:text"`
 	Link          string    `json:"link"`
-	PubDate       time.Time `json:"pub_date"`
+	PubDate       time.Time `json:"pub_date" gorm:"index:idx_channel_pubdate"`
 	AudioURL      string    `json:"audioUrl"` // Standardized to matches frontend expectation
 	Duration      string    `json:"duration"`
 	LocalAudioPath string   `json:"local_audio_path"`
 	SrtContent    string    `json:"srt_content" gorm:"type:text"`
 	Summary       string    `json:"summary" gorm:"type:text"`
+	TranscriptionStatus string `json:"transcription_status" gorm:"default:''"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -183,6 +184,7 @@ func (q *TranscriptionQueue) AddTask(task TranscriptionTask) {
 		}
 	}
 	
+	db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("transcription_status", "pending")
 	q.tasks = append(q.tasks, task)
 	log.Printf("➕ Added to transcription queue: %s (Queue size: %d)", task.Title, len(q.tasks))
 }
@@ -214,29 +216,39 @@ func transcriptionWorker() {
 		
 		log.Printf("🎬 Processing transcription task: %s", task.Title)
 		
+		// 更新状态为处理中
+		db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("transcription_status", "processing")
+		
 		// 确保音频文件已下载
 		if task.LocalPath == "" || !fileExists(task.LocalPath) {
 			log.Printf("📥 Downloading audio for: %s", task.Title)
 			localPath, err := downloadAudio(task.AudioURL, task.GUID)
 			if err != nil {
 				log.Printf("❌ Failed to download audio: %v", err)
+				db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("transcription_status", "failed")
 				continue
 			}
 			task.LocalPath = localPath
 			
 			// 更新数据库
-			db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("local_audio_path", localPath)
+			db.Model(&Episode{}).Where("guid = ?", task.GUID).Updates(map[string]interface{}{
+				"local_audio_path": localPath,
+			})
 		}
 		
 		// 执行转录
 		srtContent, err := performTranscription(task.LocalPath)
 		if err != nil {
 			log.Printf("❌ Transcription failed for %s: %v", task.Title, err)
+			db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("transcription_status", "failed")
 			continue
 		}
 		
 		// 保存到数据库
-		result := db.Model(&Episode{}).Where("guid = ?", task.GUID).Update("srt_content", srtContent)
+		result := db.Model(&Episode{}).Where("guid = ?", task.GUID).Updates(map[string]interface{}{
+			"srt_content":          srtContent,
+			"transcription_status": "completed",
+		})
 		if result.Error != nil {
 			log.Printf("❌ Failed to save SRT for %s: %v", task.Title, result.Error)
 		} else {
@@ -896,6 +908,9 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 	// Normalize the audio path - extract just the filename if it's a full path
 	audioFilename := filepath.Base(req.AudioPath)
 	localPath := filepath.Join("media_cache", audioFilename)
+
+	// 更新状态为处理中
+	db.Model(&Episode{}).Where("guid = ?", req.GUID).Update("transcription_status", "processing")
 	
 	// Try the normalized local path first
 	var filePath string
@@ -969,6 +984,9 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(proxyReq)
 	if err != nil {
 		log.Printf("❌ Whisper server request failed after %v: %v", time.Since(start), err)
+		if req.GUID != "" {
+			db.Model(&Episode{}).Where("guid = ?", req.GUID).Update("transcription_status", "failed")
+		}
 		http.Error(w, fmt.Sprintf("Whisper server error: %v", err), http.StatusBadGateway)
 		return
 	}
@@ -979,6 +997,9 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		log.Printf("❌ Whisper server returned error %d: %s", resp.StatusCode, string(respBody))
+		if req.GUID != "" {
+			db.Model(&Episode{}).Where("guid = ?", req.GUID).Update("transcription_status", "failed")
+		}
 		http.Error(w, fmt.Sprintf("Whisper server returned error %d: %s", resp.StatusCode, string(respBody)), http.StatusInternalServerError)
 		return
 	}
@@ -1001,7 +1022,10 @@ func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 4. Save to DB if GUID provided
 	if req.GUID != "" {
-		result := db.Model(&Episode{}).Where("guid = ?", req.GUID).Update("srt_content", srtStr)
+		result := db.Model(&Episode{}).Where("guid = ?", req.GUID).Updates(map[string]interface{}{
+			"srt_content":          srtStr,
+			"transcription_status": "completed",
+		})
 		if result.Error != nil {
 			log.Printf("⚠️ Failed to update database for GUID %s: %v", req.GUID, result.Error)
 		} else {
