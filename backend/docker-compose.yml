@@ -48,7 +48,7 @@ services:
       - DB_DSN=${DB_DSN:-molten:moltenpass@tcp(mysql:3306)/molten_music?charset=utf8mb4&parseTime=True&loc=Local}
       
       # Whisper 服务器配置
-      - WHISPER_SERVER_URL=${WHISPER_SERVER_URL:-http://d.mrlb.top:9999}
+      - WHISPER_SERVER_URL=${WHISPER_SERVER_URL:-http://your-whisper-server:9999}
       
       # 其他配置
       - TZ=${TZ:-Asia/Shanghai}

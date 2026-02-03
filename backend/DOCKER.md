@@ -49,7 +49,7 @@ docker-compose logs -f
 DB_TYPE=sqlite
 DB_PATH=data/molten.db
 BACKEND_PORT=8080
-WHISPER_SERVER_URL=http://d.mrlb.top:9999
+WHISPER_SERVER_URL=http://your-whisper-server:9999
 TZ=Asia/Shanghai
 ```
 
@@ -66,7 +66,7 @@ MYSQL_PASSWORD=your_password
 MYSQL_PORT=3306
 
 BACKEND_PORT=8080
-WHISPER_SERVER_URL=http://d.mrlb.top:9999
+WHISPER_SERVER_URL=http://your-whisper-server:9999
 TZ=Asia/Shanghai
 ```
 

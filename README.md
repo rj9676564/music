@@ -181,7 +181,7 @@ molten-music/
 | `DB_TYPE` | 数据库类型 | `sqlite` |
 | `DB_PATH` | SQLite 路径 | `data/molten.db` |
 | `DB_DSN` | MySQL 连接串 | - |
-| `WHISPER_SERVER_URL` | Whisper 服务地址 | `http://d.mrlb.top:9999` |
+| `WHISPER_SERVER_URL` | Whisper 服务地址 | - |
 
 ### 前端配置
 

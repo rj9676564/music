@@ -860,8 +860,15 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 	return result.Choices[0].Message.Content, nil
 }
 
-// AI Transcribe logic moved from Electron
-const WHISPER_SERVER_URL = "http://d.mrlb.top:9999"
+// AI Transcribe logic
+var WHISPER_SERVER_URL = getEnv("WHISPER_SERVER_URL", "")
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
 
 func transcribeHandler(w http.ResponseWriter, r *http.Request) {
 	enableCors(&w)
