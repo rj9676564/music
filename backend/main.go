@@ -45,6 +45,7 @@ type Episode struct {
 	LocalAudioPath string   `json:"local_audio_path"`
 	SrtContent    string    `json:"srt_content" gorm:"type:text"`
 	Summary       string    `json:"summary" gorm:"type:text"`
+	Tags          string    `json:"tags" gorm:"type:text"`
 	TranscriptionStatus string `json:"transcription_status" gorm:"default:''"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
@@ -491,12 +492,13 @@ func channelEpisodesHandler(w http.ResponseWriter, r *http.Request) {
                     Link:        item.Link,
                     PubDate:     pubDate,
                     AudioURL:    audioUrl,
+                    Tags:        strings.Join(item.Categories, ","),
                 }
                 
                 // Upsert
                 result = db.Clauses(clause.OnConflict{
                     Columns:   []clause.Column{{Name: "guid"}},
-                    DoUpdates: clause.AssignmentColumns([]string{"title", "description", "audio_url", "pub_date", "updated_at"}),
+                    DoUpdates: clause.AssignmentColumns([]string{"title", "description", "audio_url", "pub_date", "tags", "updated_at"}),
                 }).Create(&episode)
                 
                 if result.Error == nil {
@@ -776,6 +778,42 @@ func uploadSrtHandler(w http.ResponseWriter, r *http.Request) {
 		"message": "SRT uploaded successfully",
 		"size":    len(content),
 	})
+}
+
+// Update Tags
+func updateTagsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		GUID string `json:"guid"`
+		Tags string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.GUID == "" {
+		http.Error(w, "GUID is required", http.StatusBadRequest)
+		return
+	}
+
+	result := db.Model(&Episode{}).Where("guid = ?", req.GUID).Update("tags", req.Tags)
+	if result.Error != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
 // AI Summarization
@@ -1160,6 +1198,7 @@ func main() {
     http.HandleFunc("/api/download", downloadEpisodeHandler)
     http.HandleFunc("/api/save-srt", saveSrtHandler)
     http.HandleFunc("/api/upload-srt", uploadSrtHandler)
+    http.HandleFunc("/api/update-tags", updateTagsHandler)
     http.HandleFunc("/api/transcribe", transcribeHandler)
     http.HandleFunc("/api/summary", summarizeHandler)
     http.HandleFunc("/api/queue-transcription", queueTranscriptionHandler)

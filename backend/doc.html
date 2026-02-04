@@ -505,6 +505,26 @@
                 </button>
                 <div class="api-header">
                     <span class="method post">POST</span>
+                    <span class="path">/api/update-tags</span>
+                    <span class="badge badge-new">NEW</span>
+                </div>
+                <div class="api-desc">更新节目的标签信息。标签通常用于分类或搜索。</div>
+                <div class="code-block">
+                    <div class="code-label">Request Body</div>
+                    <pre class="body-sample">{
+  "guid": "episode-guid-123",
+  "tags": "科技,播客,AI"
+}</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method post">POST</span>
                     <span class="path">/api/summary</span>
                 </div>
                 <div class="api-desc">使用 LLM (如 GPT-4) 生成节目摘要。</div>
@@ -569,6 +589,7 @@
                         <li>• Title (标题)</li>
                         <li>• SrtContent (字幕内容)</li>
                         <li>• Summary (AI 摘要)</li>
+                        <li>• Tags (标签)</li>
                     </ul>
                 </div>
             </div>
