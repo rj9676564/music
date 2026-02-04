@@ -48,7 +48,6 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
         className="custom-scrollbar"
         style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
         {" "}
-        // 滚动条略微留出边距
         {episodes.map((episode) => (
           <div
             key={episode.guid || episode.title}

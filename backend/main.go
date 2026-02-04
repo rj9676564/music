@@ -716,6 +716,68 @@ func saveSrtHandler(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
+// Upload SRT File
+func uploadSrtHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form
+	err := r.ParseMultipartForm(10 << 20) // 10MB limit
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	guid := r.FormValue("guid")
+	if guid == "" {
+		http.Error(w, "GUID is required", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "File is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		return
+	}
+
+	srtStr := string(content)
+	
+	// Update DB
+	result := db.Model(&Episode{}).Where("guid = ?", guid).Updates(map[string]interface{}{
+		"srt_content":          srtStr,
+		"transcription_status": "completed",
+	})
+	
+	if result.Error != nil {
+		log.Printf("❌ Failed to update SRT via upload for %s: %v", guid, result.Error)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("📥 Manually uploaded SRT for GUID: %s (%d bytes)", guid, len(content))
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "SRT uploaded successfully",
+		"size":    len(content),
+	})
+}
+
 // AI Summarization
 type SummaryRequest struct {
 	GUID       string `json:"guid"`
@@ -1097,9 +1159,15 @@ func main() {
     http.HandleFunc("/api/channels/", channelEpisodesHandler) // Matches /api/channels/{id}/episodes... technically matches anything after
     http.HandleFunc("/api/download", downloadEpisodeHandler)
     http.HandleFunc("/api/save-srt", saveSrtHandler)
+    http.HandleFunc("/api/upload-srt", uploadSrtHandler)
     http.HandleFunc("/api/transcribe", transcribeHandler)
     http.HandleFunc("/api/summary", summarizeHandler)
     http.HandleFunc("/api/queue-transcription", queueTranscriptionHandler)
+    
+    // Documentation
+    http.HandleFunc("/doc", func(w http.ResponseWriter, r *http.Request) {
+        http.ServeFile(w, r, "doc.html")
+    })
     
     // Serve cached media files with CORS
     fs := http.FileServer(http.Dir("media_cache"))

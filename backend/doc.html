@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Molten Music - API 文档</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg: #0f172a;
+            --sidebar-bg: #1e293b;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --border: #334155;
+            --code-bg: #000000;
+            --accent: #22d3ee;
+            --success: #10b981;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            line-height: 1.6;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        aside {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            height: 100vh;
+            position: fixed;
+            padding: 2rem 1.5rem;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 700;
+            font-size: 1.25rem;
+            margin-bottom: 2.5rem;
+            color: var(--primary);
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        nav ul {
+            list-style: none;
+        }
+
+        nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        nav a {
+            text-decoration: none;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: block;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--text-main);
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        nav a.active {
+            color: var(--text-main);
+            background-color: var(--primary);
+        }
+
+        .nav-section {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            margin: 1.5rem 0 0.5rem 0.75rem;
+        }
+
+        /* Main Content */
+        main {
+            margin-left: 280px;
+            flex: 1;
+            padding: 4rem 10%;
+            max-width: 1200px;
+        }
+
+        section {
+            margin-bottom: 5rem;
+            scroll-margin-top: 4rem;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(to right, #fff, var(--text-dim));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h2::before {
+            content: '';
+            display: block;
+            width: 4px;
+            height: 1.5rem;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        p {
+            color: var(--text-dim);
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+
+        /* API Card */
+        .api-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .api-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 10px 25px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        .api-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .copy-curl-btn {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.2s;
+        }
+
+        .copy-curl-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .copy-curl-btn.copied {
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
+        }
+
+        .method {
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .method.get { background-color: rgba(16, 185, 129, 0.2); color: #10b981; }
+        .method.post { background-color: rgba(99, 102, 241, 0.2); color: #6366f1; }
+        .method.patch { background-color: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+
+        .path {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        .api-desc {
+            font-size: 0.95rem;
+            color: var(--text-dim);
+            margin-bottom: 1.25rem;
+            padding-right: 6rem;
+        }
+
+        .code-block {
+            background-color: var(--code-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .code-label {
+            position: absolute;
+            top: 0;
+            right: 1rem;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: #1e293b;
+            padding: 2px 8px;
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+
+        pre {
+            color: #d1d5db;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+        }
+
+        th {
+            text-align: left;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            aside {
+                display: none;
+            }
+            main {
+                margin-left: 0;
+                padding: 2rem 5%;
+            }
+            .api-desc {
+                padding-right: 0;
+            }
+            .copy-curl-btn {
+                position: static;
+                margin-bottom: 1rem;
+                display: inline-flex;
+            }
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        .badge-new { background: var(--primary); color: white; }
+
+        .glow-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glow-card::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.1), transparent 50%);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <aside>
+        <div class="logo">
+            <div class="logo-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+            </div>
+            Molten Music
+        </div>
+        <nav>
+            <div class="nav-section">快速开始</div>
+            <ul>
+                <li><a href="#overview">项目总览</a></li>
+                <li><a href="#getting-started">快速入门</a></li>
+                <li><a href="#architecture">系统架构</a></li>
+            </ul>
+            <div class="nav-section">API 接口</div>
+            <ul>
+                <li><a href="#api-channels">频道管理</a></li>
+                <li><a href="#api-episodes">节目管理</a></li>
+                <li><a href="#api-audio">音频处理</a></li>
+                <li><a href="#api-ai">AI 转录与摘要</a></li>
+            </ul>
+            <div class="nav-section">其他</div>
+            <ul>
+                <li><a href="#config">环境配置</a></li>
+                <li><a href="#database">数据库</a></li>
+            </ul>
+        </nav>
+    </aside>
+
+    <main>
+        <section id="overview">
+            <h1>Molten Music API</h1>
+            <p>欢迎使用 Molten Music 后端 API。本系统为播客管理和 AI 辅助收听提供强大的底层支持，包括播客订阅解析、音频流媒体服务、基于 Whisper 的自动转录以及基于大模型的智能摘要生成。</p>
+            <div class="api-card glow-card" style="border-left: 4px solid var(--primary);">
+                <div style="font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    基础 URL
+                </div>
+                <div class="path" id="baseUrl">http://localhost:8080</div>
+                <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-dim);">默认运行端口为 8080，支持 CORS 跨域请求。</div>
+            </div>
+        </section>
+
+        <section id="api-channels">
+            <h2>频道管理</h2>
+            
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/channels</span>
+                </div>
+                <div class="api-desc">获取所有已订阅的播客频道列表。</div>
+                <div class="code-block">
+                    <div class="code-label">Response</div>
+                    <pre>[
+  {
+    "id": "the-daily",
+    "name": "The Daily",
+    "author": "The New York Times",
+    "rss": "https://feeds.simplecast.com/54nAGcIl",
+    "updated_at": "2024-03-20T10:00:00Z"
+  }
+]</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/channels/:id/episodes</span>
+                </div>
+                <div class="api-desc">获取指定频道的节目列表。支持智能刷新逻辑：超过 1 小时未更新时会自动同步 RSS。</div>
+                <table style="margin-bottom: 1.25rem;">
+                    <thead>
+                        <tr><th>参数</th><th>类型</th><th>必须</th><th>描述</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>id</td><td>string</td><td>是</td><td>频道 ID</td></tr>
+                        <tr><td>refresh</td><td>query</td><td>否</td><td>传 true 强制强制刷新 RSS</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="api-audio">
+            <h2>音频处理</h2>
+            
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/download</span>
+                </div>
+                <div class="api-desc">将播客音频下载到本地缓存服务器。</div>
+                <div class="code-block" style="margin-bottom: 1rem;">
+                    <div class="code-label">Request Body</div>
+                    <pre class="body-sample">{
+  "guid": "episode-guid-123",
+  "url": "https://example.com/audio.mp3"
+}</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="path">/media/:filename</span>
+                </div>
+                <div class="api-desc">流式播放已缓存的音频文件。支持 HTTP Range 请求，优化播放体验。</div>
+            </div>
+        </section>
+
+        <section id="api-ai">
+            <h2>AI 转录与摘要</h2>
+            
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/transcribe</span>
+                </div>
+                <div class="api-desc">调用 Whisper AI 服务器进行语音转文字，生成 SRT 字幕。</div>
+                <div class="code-block">
+                    <div class="code-label">Request Body</div>
+                    <pre class="body-sample">{
+  "guid": "episode-guid-123",
+  "audioPath": "media_cache/abc.mp3"
+}</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/upload-srt</span>
+                    <span class="badge badge-new">NEW</span>
+                </div>
+                <div class="api-desc">手动上传 SRT 字幕文件。适用于已有字幕或通过外部工具生成的场景。</div>
+                <table style="margin-bottom: 1.25rem;">
+                    <thead>
+                        <tr><th>Form 字段</th><th>类型</th><th>必须</th><th>描述</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>guid</td><td>string</td><td>是</td><td>节目 GUID</td></tr>
+                        <tr><td>file</td><td>file</td><td>是</td><td>SRT 格式文件</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/summary</span>
+                </div>
+                <div class="api-desc">使用 LLM (如 GPT-4) 生成节目摘要。</div>
+                <div class="code-block">
+                    <div class="code-label">Request Body</div>
+                    <pre class="body-sample">{
+  "guid": "episode-guid-123",
+  "srtContent": "1\n00:00:01,000 --> 00:00:04,000\nHello world...",
+  "model": "gpt-4-turbo"
+}</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/queue-transcription</span>
+                    <span class="badge badge-new">NEW</span>
+                </div>
+                <div class="api-desc">异步转录队列任务。添加到队列后，后台会按顺序处理下载和转录。</div>
+            </div>
+        </section>
+
+        <section id="config">
+            <h2>环境配置</h2>
+            <p>后端服务支持通过环境变量进行高度自定义配置。</p>
+            <table>
+                <thead>
+                    <tr><th>变量名</th><th>描述</th><th>默认值</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>DB_TYPE</code></td><td>数据库类型 (sqlite/mysql)</td><td>sqlite</td></tr>
+                    <tr><td><code>DB_PATH</code></td><td>SQLite 文件存储路径</td><td>data/molten.db</td></tr>
+                    <tr><td><code>DB_DSN</code></td><td>MySQL 连接字符串</td><td>-</td></tr>
+                    <tr><td><code>WHISPER_SERVER_URL</code></td><td>Whisper API 服务器地址</td><td>-</td></tr>
+                    <tr><td><code>OPENAI_API_KEY</code></td><td>LLM 摘要所需密钥</td><td>-</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="database" style="margin-bottom: 2rem;">
+            <h2>数据库结构</h2>
+            <p>系统使用 GORM 进行数据库管理。主要表结构如下：</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                <div class="api-card">
+                    <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--accent);">Channels (频道表)</div>
+                    <ul style="font-size: 0.85rem; color: var(--text-dim); list-style: none;">
+                        <li>• ID (Primary Key)</li>
+                        <li>• Name (频道名称)</li>
+                        <li>• Author (作者)</li>
+                        <li>• RSS (源地址)</li>
+                    </ul>
+                </div>
+                <div class="api-card">
+                    <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--accent);">Episodes (节目表)</div>
+                    <ul style="font-size: 0.85rem; color: var(--text-dim); list-style: none;">
+                        <li>• GUID (Primary Key)</li>
+                        <li>• Title (标题)</li>
+                        <li>• SrtContent (字幕内容)</li>
+                        <li>• Summary (AI 摘要)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <footer style="padding-top: 4rem; border-top: 1px solid var(--border); text-align: center; color: var(--text-dim); font-size: 0.85rem;">
+            Molten Music System &copy; 2024. Documentation generated by Antigravity.
+        </footer>
+    </main>
+
+    <script>
+        // Simple active link tracker
+        const sections = document.querySelectorAll('section');
+        const navLinks = document.querySelectorAll('nav a');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.pageYOffset >= sectionTop - 150) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').slice(1) === current) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Copy as cURL logic
+        function copyAsCurl(btn) {
+            const card = btn.closest('.api-card');
+            const method = card.querySelector('.method').textContent.trim();
+            const path = card.querySelector('.path').textContent.trim();
+            const baseUrl = document.getElementById('baseUrl').textContent.trim();
+            const fullUrl = baseUrl + (path.startsWith('/') ? path : '/' + path);
+            
+            let curl = `curl -X ${method} "${fullUrl}"`;
+            
+            // Handle JSON body
+            const bodySample = card.querySelector('.body-sample');
+            if (bodySample) {
+                const data = bodySample.textContent.trim();
+                curl += ` \\\n  -H "Content-Type: application/json" \\\n  -d '${data}'`;
+            }
+            
+            // Handle File Upload
+            if (path === '/api/upload-srt') {
+                curl = `curl -X POST "${fullUrl}" \\\n  -F "guid=YOUR_EPISODE_GUID" \\\n  -F "file=@/path/to/your/file.srt"`;
+            }
+
+            navigator.clipboard.writeText(curl).then(() => {
+                const originalContent = btn.innerHTML;
+                btn.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    已复制
+                `;
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalContent;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
