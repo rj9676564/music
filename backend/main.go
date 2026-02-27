@@ -21,8 +21,9 @@ import (
 func main() {
 	app := pocketbase.New()
 
-	// 1. 初始化 (现在改用手动在 UI 创建 Collection)
+	// 1. 初始化 (自动检查并创建 Collection)
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		ensureCollections(app)
 		return e.Next()
 	})
 
@@ -253,5 +254,57 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 	json.NewDecoder(resp.Body).Decode(&result)
 	if len(result.Choices) > 0 { return result.Choices[0].Message.Content, nil }
 	return "", fmt.Errorf("LLM error")
+}
+
+// ptr 是一个简单的辅助函数，用于将字面量转换为指针 (兼容 PocketBase v0.23 API)
+func ptr[T any](v T) *T {
+	return &v
+}
+
+func ensureCollections(app *pocketbase.PocketBase) {
+	// 1. 确保 channels 表存在
+	channels, err := app.FindCollectionByNameOrId("channels")
+	if err != nil {
+		log.Println("👷 Creating 'channels' collection...")
+		c := core.NewCollection("channels", "base")
+		c.ListRule = ptr("") // 允许公开读取
+		c.ViewRule = ptr("")
+		c.Fields.Add(&core.TextField{Name: "name", Required: true})
+		c.Fields.Add(&core.URLField{Name: "rss", Required: true})
+		if err := app.Save(c); err != nil {
+			log.Printf("❌ Failed to save channels collection: %v", err)
+		}
+		channels = c
+	}
+
+	// 2. 确保 episodes 表存在
+	if _, err := app.FindCollectionByNameOrId("episodes"); err != nil {
+		log.Println("👷 Creating 'episodes' collection...")
+		c := core.NewCollection("episodes", "base")
+		c.ListRule = ptr("")
+		c.ViewRule = ptr("")
+		c.Fields.Add(&core.TextField{Name: "guid", Required: true})
+		// 动态获取 channels 的 ID 进行关联
+		if channels != nil {
+			c.Fields.Add(&core.RelationField{
+				Name:         "channel_id",
+				CollectionId: channels.Id,
+				MaxSelect:    1,
+				Required:     true,
+			})
+		}
+		c.Fields.Add(&core.TextField{Name: "title"})
+		c.Fields.Add(&core.DateField{Name: "pub_date"})
+		c.Fields.Add(&core.URLField{Name: "audio_url"})
+		c.Fields.Add(&core.EditorField{Name: "srt_content"})
+		c.Fields.Add(&core.EditorField{Name: "summary"})
+		c.Fields.Add(&core.TextField{Name: "transcription_status"})
+		
+		if err := app.Save(c); err != nil {
+			log.Printf("❌ Failed to save episodes collection: %v", err)
+		} else {
+			log.Println("✅ episodes collection created successfully!")
+		}
+	}
 }
 
