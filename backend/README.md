@@ -1,165 +1,120 @@
 # Molten Music Backend
 
-播客管理系统后端服务，支持 SQLite 和 MySQL 数据库。
+基于 [PocketBase](https://pocketbase.io/) 的播客管理系统后端服务。内置管理后台、自动同步和 AI 转录功能。
 
 ## ✨ 功能特性
 
-- 🎵 播客频道管理
-- 📥 音频下载和缓存
-- 🎙️ Whisper AI 自动转录
-- 🤖 LLM 智能摘要
-- 💾 SQLite/MySQL 双数据库支持
-- 🐳 Docker 一键部署
+- 🎵 **播客频道管理**：支持 RSS 订阅和自动同步
+- 📥 **音频下载和缓存**：本地化存储，加快访问速度
+- 🎙️ **Whisper AI 转录**：自动生成播客字幕 (SRT)
+- 🤖 **LLM 智能摘要**：快速了解播客核心内容
+- 🎨 **内置 Admin UI**：可视化管理所有频道和节目数据
+- 🐳 **Docker 支持**：一键流水线部署
 
 ## 🚀 快速开始
 
 ### 本地开发
 
 ```bash
-# 安装依赖（首次运行）
-go mod download
+# 安装依赖
+go mod tidy
 
-# 启动服务（默认使用 SQLite）
-go run main.go
-
-# 使用 MySQL
-export DB_TYPE=mysql
-export DB_DSN="user:password@tcp(localhost:3306)/molten_music?charset=utf8mb4&parseTime=True&loc=Local"
-go run main.go
+# 启动服务
+go run main.go serve
 ```
+
+访问 `http://127.0.0.1:8090/_/` 进入管理后台。
 
 ### Docker 部署
 
 ```bash
-# SQLite 模式（开发环境）
 docker-compose up -d
-
-# MySQL 模式（生产环境）
-cp .env.mysql .env
-docker-compose --profile mysql up -d
 ```
-
-详细说明请查看 [DOCKER.md](DOCKER.md)
 
 ## 📋 环境变量
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
-| `DB_TYPE` | 数据库类型 (`sqlite`/`mysql`) | `sqlite` |
-| `DB_PATH` | SQLite 文件路径 | `data/molten.db` |
-| `DB_DSN` | MySQL 连接字符串 | - |
-| `WHISPER_SERVER_URL` | Whisper 服务地址 | - |
+| `OPENAI_API_KEY` | 用于摘要生成的 API Key | - |
+| `OPENAI_API_BASE` | API 代理地址 | `https://api.openai.com/v1` |
 
 ## 📁 项目结构
 
 ```
 backend/
-├── main.go              # 主程序
-├── Dockerfile           # Docker 镜像
-├── docker-compose.yml   # Docker 编排
-├── .env.example         # 环境变量示例
-├── .env.sqlite          # SQLite 配置模板
-├── .env.mysql           # MySQL 配置模板
-├── DATABASE.md          # 数据库文档
-├── DOCKER.md            # Docker 文档
-├── data/                # SQLite 数据目录
+├── main.go              # PocketBase 启动程序及核心逻辑
+├── internal/
+│   └── rss/             # RSS 抓取与解析逻辑（含单元测试）
+├── Dockerfile           # Docker 镜像构建
+├── docker-compose.yml   # Docker 编排文件
+├── pb_data/             # 数据库文件目录（自动创建）
 ├── media_cache/         # 音频缓存目录
-└── mysql-init/          # MySQL 初始化脚本
+└── doc.html             # API 文档
 ```
 
 ## 🔌 API 端点
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
+| `/_/` | GET | PocketBase 管理后台 |
 | `/api/channels` | GET | 获取频道列表 |
-| `/api/channels/:id/episodes` | GET | 获取节目列表 |
-| `/api/download` | POST | 下载音频 |
-| `/api/transcribe` | POST | 转录音频 |
-| `/api/summary` | POST | 生成摘要 |
-| `/api/save-srt` | POST | 保存字幕 |
-| `/media/*` | GET | 流式播放音频 |
+| `/api/channels/:id/episodes` | GET | 获取节目列表（自动按需刷新） |
+| `/api/episodes/missing-srt` | GET | 获取待转录任务列表 |
+| `/api/save-srt` | POST | 保存生成好的字幕 |
+| `/api/summary` | POST | 调用 AI 生成内容摘要 |
+| `/media/*` | GET | 访问本地缓存的音频文件 |
+| `/doc` | GET | 查看详细 API 文档 |
 
-## 🗄️ 数据库
+## 语音转录同步 (Client Sync)
 
-### SQLite（默认）
+本项目采用“被动拉取”架构，由本地客户端（如具有 GPU 加速的 Mac）负责转录任务。
 
-```bash
-# 无需配置，直接运行
-go run main.go
-```
+### 客户端配置 (本地 Mac/PC)
 
-数据存储在 `data/molten.db`
+1. **安装依赖**:
+   ```bash
+   pip install openai-whisper yt-dlp torch requests
+   # 如果是 Mac，建议安装 ffmpeg
+   brew install ffmpeg
+   ```
 
-### MySQL
+2. **配置并运行**:
+   脚本位于 `tools/transcription/sync_subtitles.py`。
+   ```bash
+   export VPS_URL="https://your-podcast-api.com"
+   python tools/transcription/sync_subtitles.py
+   ```
 
-```bash
-# 1. 创建数据库
-mysql -u root -p
-CREATE DATABASE molten_music CHARACTER SET utf8mb4;
+3. **设置定时任务 (Crontab)**:
+   建议每 15-30 分钟同步一次：
+   ```bash
+   */15 * * * * cd /path/to/project && export VPS_URL="..." && /usr/bin/python3 tools/transcription/sync_subtitles.py >> sync.log 2>&1
+   ```
 
-# 2. 配置环境变量
-export DB_TYPE=mysql
-export DB_DSN="root:password@tcp(localhost:3306)/molten_music?charset=utf8mb4&parseTime=True&loc=Local"
-
-# 3. 运行
-go run main.go
-```
-
-详细配置请查看 [DATABASE.md](DATABASE.md)
-
-## 🔧 开发
+## 🔧 开发与测试
 
 ```bash
-# 安装依赖
-go mod download
+# 运行单元测试 (主要针对 RSS 解析)
+go test ./internal/rss/...
 
-# 运行
-go run main.go
-
-# 构建
-go build -o molten-server
-
-# 测试
-go test ./...
-
-# 格式化代码
-go fmt ./...
+# 构建二进制文件
+go build -o molten-server .
 ```
 
-## 📦 依赖
+##  Docker 生产部署
 
-- Go 1.21+
-- GORM (ORM 框架)
-- SQLite/MySQL 驱动
-- gofeed (RSS 解析)
-
-## 🐳 Docker
+推荐使用 `docker-compose.yml` 管理。确保挂载了 `pb_data` 以持久化数据库：
 
 ```bash
-# 构建镜像
-docker build -t molten-backend .
-
-# 运行容器
-docker run -d \
-  -p 8080:8080 \
-  -v $(pwd)/data:/app/data \
-  -e DB_TYPE=sqlite \
-  molten-backend
+# 启动
+docker-compose up -d
 ```
-
-## 📚 文档
-
-- [Docker 部署指南](DOCKER.md)
-- [数据库配置](DATABASE.md)
-- [环境变量示例](.env.example)
 
 ## 🔐 安全建议
 
-1. 不要提交 `.env` 文件到 Git
-2. 生产环境使用强密码
-3. 限制 API 访问（添加认证）
-4. 定期备份数据库
-5. 使用 HTTPS
+1. 部署后请第一时间登录管理后台设置超级管理员账号。
+2. 内部 API 默认允许匿名访问，建议通过 PocketBase 的 API Rules 设置权限。
+3. 使用 HTTPS 保护管理界面。
 
 ## 📄 许可证
 

@@ -33,11 +33,12 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates libc6-compat
 
 # Create data and media directories
-RUN mkdir -p data media_cache
+RUN mkdir -p pb_data media_cache
 
 # Copy the binary from builder
 COPY --from=builder /app/main .
 
 EXPOSE 8080
 
-CMD ["./main"]
+# Run the pocketbase app
+CMD ["./main", "serve", "--http=0.0.0.0:8080"]
