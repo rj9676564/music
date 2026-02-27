@@ -544,11 +544,32 @@
                     复制 cURL
                 </button>
                 <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/episodes/missing-srt</span>
+                    <span class="badge badge-new">NEW</span>
+                </div>
+                <div class="api-desc">获取待转录的节目列表。自动包含最近 2 天内无字幕的节目，以及手动加入队列的节目。</div>
+                <div class="code-block">
+                    <div class="code-label">Response</div>
+                    <pre>{
+  "success": true,
+  "count": 1,
+  "episodes": [...]
+}</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
                     <span class="method post">POST</span>
                     <span class="path">/api/queue-transcription</span>
                     <span class="badge badge-new">NEW</span>
                 </div>
-                <div class="api-desc">异步转录队列任务。添加到队列后，后台会按顺序处理下载和转录。</div>
+                <div class="api-desc">异步转录队列任务。手动触发，完成后会自动推送至 missing-srt 列表。</div>
             </div>
         </section>
 

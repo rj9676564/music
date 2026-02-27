@@ -5,6 +5,7 @@ interface EpisodesPanelProps {
   episodes: any[];
   onPlayEpisode: (episode: any) => void;
   onDownloadEpisode: (episode: any, e: React.MouseEvent) => void;
+  onRequestTranscription?: (episode: any, e: React.MouseEvent) => void;
 }
 
 export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
@@ -12,6 +13,7 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
   episodes,
   onPlayEpisode,
   onDownloadEpisode,
+  onRequestTranscription,
 }) => {
   return (
     <div
@@ -67,7 +69,7 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
                 fontWeight: 600,
                 color: "#fff",
                 marginBottom: "6px",
-                paddingRight: "40px",
+                paddingRight: "60px", // 增加右侧间距给按钮
                 lineHeight: 1.3,
               }}>
               {episode.title}
@@ -115,23 +117,47 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
                 </div>
               )}
             </div>
-            <button
-              onClick={(e) => onDownloadEpisode(episode, e)}
-              title="缓存到本地"
+            <div
               style={{
                 position: "absolute",
                 right: "10px",
                 top: "10px",
-                background: "transparent",
-                border: "1px solid rgba(255, 255, 255, 0.2)",
-                color: "white",
-                borderRadius: "4px",
-                cursor: "pointer",
-                padding: "4px 8px",
-                fontSize: "0.8rem",
+                display: "flex",
+                gap: "5px",
               }}>
-              ⬇
-            </button>
+              {!episode.srt_content &&
+                episode.transcription_status !== "pending" &&
+                episode.transcription_status !== "processing" && (
+                  <button
+                    onClick={(e) => onRequestTranscription?.(episode, e)}
+                    title="请求生成字幕"
+                    style={{
+                      background: "rgba(63, 81, 181, 0.2)",
+                      border: "1px solid rgba(63, 81, 181, 0.4)",
+                      color: "#9fa8da",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      padding: "4px 8px",
+                      fontSize: "0.8rem",
+                    }}>
+                    🪄
+                  </button>
+                )}
+              <button
+                onClick={(e) => onDownloadEpisode(episode, e)}
+                title="缓存音频"
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  color: "white",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  fontSize: "0.8rem",
+                }}>
+                ⬇
+              </button>
+            </div>
           </div>
         ))}
       </div>

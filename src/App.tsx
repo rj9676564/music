@@ -876,6 +876,31 @@ function App() {
     }
   };
 
+  const handleRequestTranscription = async (episode: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await axios.post(`${settings.apiUrl}/api/queue-transcription`, {
+        guid: episode.guid,
+        audioUrl: episode.audioUrl,
+        title: episode.title,
+      });
+      if (res.data.success) {
+        alert("已加入转录队列 🪄");
+        // 更新本地状态，显示“排队中”
+        setPodcastEpisodes((prev) =>
+          prev.map((ep) =>
+            ep.guid === episode.guid
+              ? { ...ep, transcription_status: "pending" }
+              : ep,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      alert("加入队列失败");
+    }
+  };
+
   const handlePlayPodcast = (episode: any) => {
     const playUrl = episode.local_audio_path
       ? `${settings.apiUrl}/media/${episode.local_audio_path.split("/").pop()}`
@@ -1105,6 +1130,7 @@ function App() {
           episodes={podcastEpisodes}
           onPlayEpisode={handlePlayPodcast}
           onDownloadEpisode={handleDownload}
+          onRequestTranscription={handleRequestTranscription}
         />
       )}
 

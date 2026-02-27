@@ -15,12 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"sort"
+
 	"github.com/glebarez/sqlite"
 	"github.com/mmcdole/gofeed"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"sort"
 )
 
 // DB Models
@@ -161,6 +162,82 @@ func initTranscriptionQueue() {
 	
 	// 启动后台处理器
 	go transcriptionWorker()
+    // 启动每日定时刷新 (早上 7 点)
+    go startDailyRefreshTimer()
+}
+
+func startDailyRefreshTimer() {
+    for {
+        now := time.Now()
+        // 计算到下一个早上 7 点的时间
+        next := time.Date(now.Year(), now.Month(), now.Day(), 7, 0, 0, 0, now.Location())
+        if now.After(next) {
+            next = next.Add(24 * time.Hour)
+        }
+        
+        log.Printf("⏰ Daily RSS refresh scheduled for: %v", next)
+        time.Sleep(time.Until(next))
+        
+        log.Printf("🌅 Good morning! Starting daily RSS refresh for all channels...")
+        refreshAllChannels()
+    }
+}
+
+func refreshAllChannels() {
+    var channels []Channel
+    db.Find(&channels)
+    
+    for _, ch := range channels {
+        log.Printf("Syncing channel: %s", ch.Name)
+        fetchAndSaveEpisodes(&ch, 100) // 每次同步最近 100 条
+    }
+}
+
+// 抽取出的核心抓取逻辑
+func fetchAndSaveEpisodes(channel *Channel, limit int) {
+    fp := gofeed.NewParser()
+    feed, err := fp.ParseURL(channel.RSS)
+    if err != nil {
+        log.Printf("❌ Failed to parse RSS for %s: %v", channel.ID, err)
+        return
+    }
+
+    itemsToProcess := feed.Items
+    if len(itemsToProcess) > limit {
+        itemsToProcess = itemsToProcess[:limit]
+    }
+
+    for _, item := range itemsToProcess {
+        pubDate := time.Now()
+        if item.Published != "" { // 修正: PublishedText -> Published
+            if item.PublishedParsed != nil {
+                pubDate = *item.PublishedParsed
+            }
+        }
+        
+        audioUrl := ""
+        if len(item.Enclosures) > 0 {
+            audioUrl = item.Enclosures[0].URL
+        }
+
+        episode := Episode{
+            GUID:        item.GUID,
+            ChannelID:   channel.ID,
+            Title:       item.Title,
+            Description: item.Description,
+            Link:        item.Link,
+            PubDate:     pubDate,
+            AudioURL:    audioUrl,
+            Tags:        strings.Join(item.Categories, ","),
+        }
+        
+        db.Clauses(clause.OnConflict{
+            Columns:   []clause.Column{{Name: "guid"}},
+            DoUpdates: clause.AssignmentColumns([]string{"title", "description", "audio_url", "pub_date", "tags", "updated_at"}),
+        }).Create(&episode)
+    }
+    
+    db.Model(channel).Update("updated_at", time.Now())
 }
 
 // 添加任务到队列
@@ -413,137 +490,50 @@ func channelEpisodesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    // Path should be /api/channels/{id}/episodes
-    parts := strings.Split(r.URL.Path, "/")
-    if len(parts) < 4 {
-        http.Error(w, "Invalid path", http.StatusBadRequest)
-        return
-    }
-    channelID := parts[3]
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+	channelID := parts[3]
 
-    // 获取频道信息
-    var channel Channel
-    if result := db.First(&channel, "id = ?", channelID); result.Error != nil {
-         http.Error(w, "Channel not found", http.StatusNotFound)
-         return
-    }
+	var channel Channel
+	if result := db.First(&channel, "id = ?", channelID); result.Error != nil {
+		http.Error(w, "Channel not found", http.StatusNotFound)
+		return
+	}
 
-    // 智能刷新逻辑：
-    // 1. 明确请求刷新 (?refresh=true)
-    // 2. 没有任何节目数据
-    // 3. 频道超过 1 小时未更新
-    refresh := r.URL.Query().Get("refresh") == "true"
-    var count int64
-    db.Model(&Episode{}).Where("channel_id = ?", channelID).Count(&count)
-    
-    // 检查最后更新时间
-    needsRefresh := refresh || count == 0
-    if !needsRefresh {
-        // 检查频道的 updated_at 时间
-        timeSinceUpdate := time.Since(channel.UpdatedAt)
-        if timeSinceUpdate > 1*time.Hour {
-            needsRefresh = true
-            log.Printf("📡 Channel %s hasn't been updated for %v, refreshing...", channelID, timeSinceUpdate.Round(time.Minute))
-        }
-    }
+	refresh := r.URL.Query().Get("refresh") == "true"
+	var count int64
+	db.Model(&Episode{}).Where("channel_id = ?", channelID).Count(&count)
 
-    if needsRefresh {
-        log.Printf("🔄 Fetching latest episodes for channel: %s", channel.Name)
-        
-        fp := gofeed.NewParser()
-        feed, err := fp.ParseURL(channel.RSS)
-        if err != nil {
-            log.Printf("❌ Failed to parse RSS for %s: %v", channel.ID, err)
-            // If parse fails, we still serve cached episodes
-        } else {
-            log.Printf("✅ Fetched %d items from RSS feed: %s", len(feed.Items), channel.Name)
-            
-            // 优化：如果不是初次导入，只处理最新的 50 条，避免全量更新太慢
-            itemsToProcess := feed.Items
-            if count > 0 && len(itemsToProcess) > 50 {
-                itemsToProcess = itemsToProcess[:50]
-                log.Printf("⚡ Optimization: Only processing latest 50 items (database already has data)")
-            }
+	needsRefresh := refresh || count == 0
+	if !needsRefresh {
+		if time.Since(channel.UpdatedAt) > 1*time.Hour {
+			needsRefresh = true
+		}
+	}
 
-            // Save episodes
-            newCount := 0
-            updatedCount := 0
-            for _, item := range itemsToProcess {
-                pubDate := time.Now()
-                if item.PublishedParsed != nil {
-                    pubDate = *item.PublishedParsed
-                }
-                
-                audioUrl := ""
-                if len(item.Enclosures) > 0 {
-                    audioUrl = item.Enclosures[0].URL
-                }
+	if needsRefresh {
+		log.Printf("🔄 Refreshing channel: %s", channel.Name)
+		fetchAndSaveEpisodes(&channel, 50)
+	}
 
-                // 检查是否已存在 (使用 Find 避免 record not found 错误日志)
-                var existing Episode
-                result := db.Where("guid = ?", item.GUID).Limit(1).Find(&existing)
-                isNew := result.RowsAffected == 0
+	var episodes []Episode
+	db.Where("channel_id = ?", channelID).Order("pub_date desc").Limit(50).Find(&episodes)
 
-                episode := Episode{
-                    GUID:        item.GUID,
-                    ChannelID:   channelID,
-                    Title:       item.Title,
-                    Description: item.Description,
-                    Link:        item.Link,
-                    PubDate:     pubDate,
-                    AudioURL:    audioUrl,
-                    Tags:        strings.Join(item.Categories, ","),
-                }
-                
-                // Upsert
-                result = db.Clauses(clause.OnConflict{
-                    Columns:   []clause.Column{{Name: "guid"}},
-                    DoUpdates: clause.AssignmentColumns([]string{"title", "description", "audio_url", "pub_date", "tags", "updated_at"}),
-                }).Create(&episode)
-                
-                if result.Error == nil {
-                    if isNew {
-                        newCount++
-                    } else {
-                        updatedCount++
-                    }
-                }
-            }
-            
-            // 更新频道的 updated_at 时间
-            db.Model(&channel).Update("updated_at", time.Now())
-            
-            log.Printf("📊 Channel %s: %d new episodes, %d updated", channel.Name, newCount, updatedCount)
-        }
-    }
+	for i := range episodes {
+		if episodes[i].LocalAudioPath != "" && !fileExists(episodes[i].LocalAudioPath) {
+			episodes[i].LocalAudioPath = ""
+			db.Model(&Episode{}).Where("guid = ?", episodes[i].GUID).Update("local_audio_path", "")
+		}
+	}
 
-    var episodes []Episode
-    db.Where("channel_id = ?", channelID).Order("pub_date desc").Limit(50).Find(&episodes)
-    
-    // Check local files existence
-    for i := range episodes {
-        if episodes[i].LocalAudioPath != "" {
-            if _, err := os.Stat(episodes[i].LocalAudioPath); os.IsNotExist(err) {
-                 episodes[i].LocalAudioPath = "" // Reset if file deleted
-                 db.Save(&episodes[i])
-            }
-        }
-    }
-
-    // Log SRT status summary
-    srtCount := 0
-    for _, ep := range episodes {
-        if ep.SrtContent != "" {
-            srtCount++
-        }
-    }
-    log.Printf("📋 Fetched %d episodes for channel %s. %d have subtitles.", len(episodes), channelID, srtCount)
-
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(map[string]interface{}{
-        "success": true,
-        "episodes": episodes,
-    })
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"episodes": episodes,
+	})
 }
 
 // Download Audio
@@ -1189,6 +1179,31 @@ func queueTranscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// 获取缺少字幕的节目列表
+func missingSrtEpisodesHandler(w http.ResponseWriter, r *http.Request) {
+    enableCors(&w)
+    if r.Method == "OPTIONS" {
+        w.WriteHeader(http.StatusOK)
+        return
+    }
+
+    var episodes []Episode
+    // 修改策略：
+    // 1. 自动处理：最近 2 天内且没有字幕的节目
+    // 2. 手动处理：用户在前端点击了“转录”按钮，状态变为 'pending' 的节目
+    twoDaysAgo := time.Now().AddDate(0, 0, -2)
+    db.Where("srt_content = ? OR srt_content IS NULL", "").
+       Where("(pub_date > ?) OR (transcription_status = ?)", twoDaysAgo, "pending").
+       Order("pub_date desc").Limit(1).Find(&episodes)
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "success":  true,
+        "count":    len(episodes),
+        "episodes": episodes,
+    })
+}
+
 func main() {
 	initDB()
 	initTranscriptionQueue()
@@ -1199,6 +1214,7 @@ func main() {
     http.HandleFunc("/api/save-srt", saveSrtHandler)
     http.HandleFunc("/api/upload-srt", uploadSrtHandler)
     http.HandleFunc("/api/update-tags", updateTagsHandler)
+    http.HandleFunc("/api/episodes/missing-srt", missingSrtEpisodesHandler)
     http.HandleFunc("/api/transcribe", transcribeHandler)
     http.HandleFunc("/api/summary", summarizeHandler)
     http.HandleFunc("/api/queue-transcription", queueTranscriptionHandler)
