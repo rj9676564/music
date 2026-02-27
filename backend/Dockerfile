@@ -1,6 +1,6 @@
 # Build stage
 # Use BUILDPLATFORM to run the compiler on the native host architecture (fast)
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
 # TARGETOS and TARGETARCH are automatically provided by Docker Buildx
 ARG TARGETOS
