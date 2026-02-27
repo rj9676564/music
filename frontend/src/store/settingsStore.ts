@@ -33,7 +33,7 @@ export const useSettingsStore = create<SettingsState>()(
       loop: false,
       lyricOffset: 0,
       audioDeviceId: 'default',
-      apiUrl: 'http://localhost:8080',
+      apiUrl: 'http://104.224.153.178:58081',
       llmApiKey: '',
       llmApiBase: 'https://api.moonshot.cn/v1',
       llmModel: 'moonshot-v1-8k',

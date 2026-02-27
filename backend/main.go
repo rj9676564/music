@@ -123,6 +123,35 @@ func main() {
 			return e.JSON(http.StatusOK, map[string]bool{"success": true})
 		})
 
+		// 加入转录队列
+		e.Router.POST("/api/queue-transcription", func(e *core.RequestEvent) error {
+			var data struct {
+				GUID     string `json:"guid"`
+				AudioURL string `json:"audioUrl"`
+				Title    string `json:"title"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return err
+			}
+
+			record, err := app.FindFirstRecordByData("episodes", "guid", data.GUID)
+			if err != nil {
+				return apis.NewNotFoundError("Episode not found", nil)
+			}
+
+			// Do not override if completed
+			if record.GetString("transcription_status") == "completed" {
+				return e.JSON(http.StatusOK, map[string]interface{}{"success": true, "status": "already_completed"})
+			}
+
+			record.Set("transcription_status", "pending")
+			if err := app.Save(record); err != nil {
+				return err
+			}
+
+			return e.JSON(http.StatusOK, map[string]bool{"success": true})
+		})
+
 		// 摘要生成
 		e.Router.POST("/api/summary", func(e *core.RequestEvent) error {
 			var data struct {

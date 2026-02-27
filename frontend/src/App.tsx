@@ -703,7 +703,7 @@ function App() {
       return;
     }
 
-    const currentEp = podcastEpisodes.find((ep) => ep.audioUrl === audioPath);
+    const currentEp = podcastEpisodes.find((ep) => (ep.audio_url || ep.audioUrl) === audioPath);
     let targetPath = audioPath.replace("local-file://media", "");
 
     if (!audioPath.startsWith("local-file://") && currentEp) {
@@ -857,7 +857,7 @@ function App() {
       const res = await fetch(`${settings.apiUrl}/api/download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guid: episode.guid, url: episode.audioUrl }),
+        body: JSON.stringify({ guid: episode.guid, url: episode.audio_url || episode.audioUrl }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -881,7 +881,7 @@ function App() {
     try {
       const res = await axios.post(`${settings.apiUrl}/api/queue-transcription`, {
         guid: episode.guid,
-        audioUrl: episode.audioUrl,
+        audioUrl: episode.audio_url || episode.audioUrl,
         title: episode.title,
       });
       if (res.data.success) {
@@ -902,9 +902,10 @@ function App() {
   };
 
   const handlePlayPodcast = (episode: any) => {
+    const audioUrl = episode.audio_url || episode.audioUrl;
     const playUrl = episode.local_audio_path
       ? `${settings.apiUrl}/media/${episode.local_audio_path.split("/").pop()}`
-      : episode.audioUrl;
+      : audioUrl;
 
     console.log("Playing podcast:", {
       title: episode.title,
@@ -931,12 +932,13 @@ function App() {
         setLyrics([]);
 
         // 自动加入转录队列（后台异步处理）
-        if (episode.audioUrl) {
+        const audioUrl = episode.audio_url || episode.audioUrl;
+        if (audioUrl) {
           console.log("🎙️ Adding to transcription queue:", episode.title);
           axios
             .post(`${settings.apiUrl}/api/queue-transcription`, {
               guid: episode.guid,
-              audioUrl: episode.audioUrl,
+              audioUrl: audioUrl,
               title: episode.title,
             })
             .then(() => {
