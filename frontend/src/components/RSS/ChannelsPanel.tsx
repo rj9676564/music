@@ -62,7 +62,7 @@ export const ChannelsPanel: React.FC<ChannelsPanelProps> = ({
 
       <div
         className="custom-scrollbar"
-        style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
+        style={{ flex: 1, overflowY: "auto", paddingRight: "8px",width: "100%" }}>
         {/* Channels List Content */}
         {loadingChannels ? (
           <div style={{ padding: "20px", textAlign: "center", color: "#888" }}>
