@@ -258,18 +258,18 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 
 func ensureCollections(app *pocketbase.PocketBase) {
 	if _, err := app.FindCollectionByNameOrId("channels"); err != nil {
-		c := core.NewCollection("channels", "channels")
+		c := core.NewCollection("channels", "base")
 		c.Fields.Add(&core.TextField{Name: "name", Required: true})
 		c.Fields.Add(&core.URLField{Name: "rss", Required: true})
 		app.Save(c)
 	}
 
 	if _, err := app.FindCollectionByNameOrId("episodes"); err != nil {
-		c := core.NewCollection("episodes", "episodes")
+		c := core.NewCollection("episodes", "base")
 		c.Fields.Add(&core.TextField{Name: "guid", Required: true})
 		c.Fields.Add(&core.RelationField{Name: "channel_id", CollectionId: "channels", MaxSelect: 1})
 		c.Fields.Add(&core.TextField{Name: "title"})
-		c.Fields.Add(&core.DateField{Name: "pub_date"}) // Fix: DateField
+		c.Fields.Add(&core.DateField{Name: "pub_date"})
 		c.Fields.Add(&core.URLField{Name: "audio_url"})
 		c.Fields.Add(&core.EditorField{Name: "srt_content"})
 		c.Fields.Add(&core.EditorField{Name: "summary"})
