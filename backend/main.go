@@ -266,7 +266,9 @@ func ensureCollections(app *pocketbase.PocketBase) {
 	channels, err := app.FindCollectionByNameOrId("channels")
 	if err != nil {
 		log.Println("👷 Creating 'channels' collection...")
-		c := core.NewCollection("channels", "base")
+		c := &core.Collection{}
+		c.Name = "channels"
+		c.Type = core.CollectionTypeBase
 		c.ListRule = ptr("") // 允许公开读取
 		c.ViewRule = ptr("")
 		c.Fields.Add(&core.TextField{Name: "name", Required: true})
@@ -280,7 +282,9 @@ func ensureCollections(app *pocketbase.PocketBase) {
 	// 2. 确保 episodes 表存在
 	if _, err := app.FindCollectionByNameOrId("episodes"); err != nil {
 		log.Println("👷 Creating 'episodes' collection...")
-		c := core.NewCollection("episodes", "base")
+		c := &core.Collection{}
+		c.Name = "episodes"
+		c.Type = core.CollectionTypeBase
 		c.ListRule = ptr("")
 		c.ViewRule = ptr("")
 		c.Fields.Add(&core.TextField{Name: "guid", Required: true})
