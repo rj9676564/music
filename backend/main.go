@@ -41,7 +41,7 @@ func main() {
 
 		// 获取频道列表
 		e.Router.GET("/api/channels", func(e *core.RequestEvent) error {
-			records, err := app.FindRecordsByFilter("channels", "1=1", "name", 100, 0)
+			records, err := app.FindRecordsByFilter("channels", "1=1", "-created", 100, 0)
 			if err != nil {
 				return err
 			}
@@ -212,7 +212,7 @@ func startDailyRefresh(app *pocketbase.PocketBase) {
 		log.Printf("⏰ Daily RSS refresh scheduled for: %v", next)
 		time.Sleep(time.Until(next))
 
-		channels, err := app.FindRecordsByFilter("channels", "1=1", "name", 100, 0)
+		channels, err := app.FindRecordsByFilter("channels", "1=1", "-created", 100, 0)
 		if err == nil {
 			for _, ch := range channels {
 				syncChannel(app, ch)
