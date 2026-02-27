@@ -41,10 +41,16 @@ func main() {
 
 		// 获取频道列表
 		e.Router.GET("/api/channels", func(e *core.RequestEvent) error {
-			records, err := app.FindRecordsByFilter("channels", "1=1", "-created", 100, 0)
+			records, err := app.FindRecordsByFilter("channels", "1=1", "", 100, 0)
 			if err != nil {
 				return err
 			}
+			
+			// 手动在内存中倒序排列 (如果集合本身没有加上创建时间字段限制)
+			for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
+				records[i], records[j] = records[j], records[i]
+			}
+
 			return e.JSON(http.StatusOK, records)
 		})
 
@@ -212,7 +218,7 @@ func startDailyRefresh(app *pocketbase.PocketBase) {
 		log.Printf("⏰ Daily RSS refresh scheduled for: %v", next)
 		time.Sleep(time.Until(next))
 
-		channels, err := app.FindRecordsByFilter("channels", "1=1", "-created", 100, 0)
+		channels, err := app.FindRecordsByFilter("channels", "1=1", "", 100, 0)
 		if err == nil {
 			for _, ch := range channels {
 				syncChannel(app, ch)
