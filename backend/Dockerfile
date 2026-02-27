@@ -1,20 +1,28 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+# Use BUILDPLATFORM to run the compiler on the native host architecture (fast)
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+
+# TARGETOS and TARGETARCH are automatically provided by Docker Buildx
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 
-# Install build dependencies (No longer need gcc for pure-Go SQLite)
+# Install build dependencies
 RUN apk add --no-cache ca-certificates
 
-# Copy go mod files
+# Copy go mod files and download with cache mount
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY . .
 
-# Build the application
-# We use CGO_ENABLED=0 for faster, statically linked, and cross-platform builds
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+# Build the application using cross-compilation
+# This avoids running the compiler under QEMU emulation for ARM64
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o main .
 
 # Final stage
 FROM alpine:latest
