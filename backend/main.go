@@ -34,7 +34,7 @@ func main() {
 			http.ServeFile(e.Response, e.Request, "doc.html")
 			return nil
 		})
-		
+
 		e.Router.GET("/media/{path...}", apis.Static(os.DirFS("./media_cache"), true))
 
 		// --- API 兼容层 ---
@@ -45,7 +45,7 @@ func main() {
 			if err != nil {
 				return err
 			}
-			
+
 			// 手动在内存中倒序排列 (如果集合本身没有加上创建时间字段限制)
 			for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
 				records[i], records[j] = records[j], records[i]
@@ -102,6 +102,47 @@ func main() {
 				"success":  true,
 				"count":    len(episodes),
 				"episodes": episodes,
+			})
+		})
+
+		// Flutter 动态页接口列表：配置独立存放，后续可替换为正式灰度/回滚接口
+		e.Router.GET("/api/dynamic/interfaces", func(e *core.RequestEvent) error {
+			records, err := app.FindRecordsByFilter("dynamic_interfaces", "1=1", "page_key", 200, 0)
+			if err != nil {
+				return err
+			}
+
+			interfaces := map[string]map[string]interface{}{}
+			for _, record := range records {
+				if !isDynamicInterfaceEnabled(record.GetString("status")) {
+					continue
+				}
+				item := dynamicInterfaceListItem(record)
+				interfaces[item["pageKey"].(string)] = item
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success":    true,
+				"count":      len(interfaces),
+				"interfaces": interfaces,
+			})
+		})
+
+		// Flutter 动态页接口详情：页面进入后按 pageKey 拉取完整 schema/js 配置
+		e.Router.GET("/api/dynamic/interfaces/{key}", func(e *core.RequestEvent) error {
+			key := strings.TrimSpace(e.Request.PathValue("key"))
+			if key == "" {
+				return apis.NewBadRequestError("pageKey is required", nil)
+			}
+
+			record, err := app.FindFirstRecordByData("dynamic_interfaces", "page_key", key)
+			if err != nil || !isDynamicInterfaceEnabled(record.GetString("status")) {
+				return apis.NewNotFoundError("Dynamic interface not found", err)
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"item":    dynamicInterfaceDetail(record),
 			})
 		})
 
@@ -214,7 +255,9 @@ func startDailyRefresh(app *pocketbase.PocketBase) {
 	for {
 		now := time.Now()
 		next := time.Date(now.Year(), now.Month(), now.Day(), 7, 0, 0, 0, now.Location())
-		if now.After(next) { next = next.Add(24 * time.Hour) }
+		if now.After(next) {
+			next = next.Add(24 * time.Hour)
+		}
 		log.Printf("⏰ Daily RSS refresh scheduled for: %v", next)
 		time.Sleep(time.Until(next))
 
@@ -250,7 +293,7 @@ func syncChannel(app *pocketbase.PocketBase, channel *core.Record) {
 		record.Set("link", item.Link)
 		record.Set("pub_date", item.PubDate)
 		record.Set("audio_url", item.AudioURL)
-		
+
 		app.Save(record)
 	}
 	channel.Set("updated_at", time.Now())
@@ -259,18 +302,32 @@ func syncChannel(app *pocketbase.PocketBase, channel *core.Record) {
 
 func callLLMForSummary(content, customKey, customBase, customModel string) (string, error) {
 	apiKey, apiBase, model := customKey, customBase, customModel
-	if apiKey == "" { apiKey = os.Getenv("OPENAI_API_KEY") }
-	if apiBase == "" { apiBase = os.Getenv("OPENAI_API_BASE") }
-	if apiBase == "" { apiBase = "https://api.openai.com/v1" }
-	if model == "" { model = os.Getenv("OPENAI_MODEL") }
-	if model == "" { model = "gpt-3.5-turbo" }
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	if apiBase == "" {
+		apiBase = os.Getenv("OPENAI_API_BASE")
+	}
+	if apiBase == "" {
+		apiBase = "https://api.openai.com/v1"
+	}
+	if model == "" {
+		model = os.Getenv("OPENAI_MODEL")
+	}
+	if model == "" {
+		model = "gpt-3.5-turbo"
+	}
 
-	if apiKey == "" { return "", fmt.Errorf("API Key missing") }
+	if apiKey == "" {
+		return "", fmt.Errorf("API Key missing")
+	}
 	text := content
-	if len(text) > 8000 { text = text[:8000] }
+	if len(text) > 8000 {
+		text = text[:8000]
+	}
 
 	payload := map[string]interface{}{
-		"model": model,
+		"model":    model,
 		"messages": []map[string]string{{"role": "user", "content": "Summary: " + text}},
 	}
 	jsonData, _ := json.Marshal(payload)
@@ -280,15 +337,118 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	defer resp.Body.Close()
 
 	var result struct {
-		Choices []struct { Message struct { Content string `json:"content"` } `json:"message"` } `json:"choices"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
-	if len(result.Choices) > 0 { return result.Choices[0].Message.Content, nil }
+	if len(result.Choices) > 0 {
+		return result.Choices[0].Message.Content, nil
+	}
 	return "", fmt.Errorf("LLM error")
+}
+
+func isDynamicInterfaceEnabled(status string) bool {
+	status = strings.TrimSpace(strings.ToLower(status))
+	return status == "" || status == "enabled" || status == "active"
+}
+
+func dynamicInterfaceListItem(record *core.Record) map[string]interface{} {
+	pageKey := record.GetString("page_key")
+
+	return map[string]interface{}{
+		"pageKey":     pageKey,
+		"className":   record.GetString("class_name"),
+		"schemaPath":  record.GetString("schema_path"),
+		"jsPath":      record.GetString("js_path"),
+		"version":     record.GetString("version"),
+		"status":      record.GetString("status"),
+		"description": record.GetString("description"),
+		"detailUrl":   "/api/dynamic/interfaces/" + pageKey,
+		"updated":     record.GetDateTime("updated"),
+	}
+}
+
+func dynamicInterfaceDetail(record *core.Record) map[string]interface{} {
+	item := dynamicInterfaceListItem(record)
+	item["schema"] = record.GetString("schema")
+	item["js"] = record.GetString("js")
+	item["scheme"] = record.GetString("scheme")
+	item["value"] = record.GetString("value")
+	return item
+}
+
+func addTextFieldIfMissing(collection *core.Collection, name string, required bool) bool {
+	if collection.Fields.GetByName(name) != nil {
+		return false
+	}
+	collection.Fields.Add(&core.TextField{Name: name, Required: required})
+	return true
+}
+
+func addEditorFieldIfMissing(collection *core.Collection, name string) bool {
+	if collection.Fields.GetByName(name) != nil {
+		return false
+	}
+	collection.Fields.Add(&core.EditorField{Name: name})
+	return true
+}
+
+func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
+	collection, err := app.FindCollectionByNameOrId("dynamic_interfaces")
+	if err != nil {
+		log.Println("👷 Creating 'dynamic_interfaces' collection...")
+		c := &core.Collection{}
+		c.Name = "dynamic_interfaces"
+		c.Type = core.CollectionTypeBase
+		c.ListRule = ptr("")
+		c.ViewRule = ptr("")
+		c.Fields.Add(&core.TextField{Name: "page_key", Required: true})
+		c.Fields.Add(&core.TextField{Name: "class_name"})
+		c.Fields.Add(&core.TextField{Name: "schema_path"})
+		c.Fields.Add(&core.TextField{Name: "js_path"})
+		c.Fields.Add(&core.TextField{Name: "version"})
+		c.Fields.Add(&core.TextField{Name: "status"})
+		c.Fields.Add(&core.TextField{Name: "description"})
+		c.Fields.Add(&core.EditorField{Name: "schema"})
+		c.Fields.Add(&core.EditorField{Name: "js"})
+		c.Fields.Add(&core.EditorField{Name: "scheme"})
+		c.Fields.Add(&core.EditorField{Name: "value"})
+
+		if err := app.Save(c); err != nil {
+			log.Printf("❌ Failed to save dynamic_interfaces collection: %v", err)
+		} else {
+			log.Println("✅ dynamic_interfaces collection created successfully!")
+		}
+		return
+	}
+
+	changed := false
+	changed = addTextFieldIfMissing(collection, "page_key", true) || changed
+	changed = addTextFieldIfMissing(collection, "class_name", false) || changed
+	changed = addTextFieldIfMissing(collection, "schema_path", false) || changed
+	changed = addTextFieldIfMissing(collection, "js_path", false) || changed
+	changed = addTextFieldIfMissing(collection, "version", false) || changed
+	changed = addTextFieldIfMissing(collection, "status", false) || changed
+	changed = addTextFieldIfMissing(collection, "description", false) || changed
+	changed = addEditorFieldIfMissing(collection, "schema") || changed
+	changed = addEditorFieldIfMissing(collection, "js") || changed
+	changed = addEditorFieldIfMissing(collection, "scheme") || changed
+	changed = addEditorFieldIfMissing(collection, "value") || changed
+
+	if changed {
+		if err := app.Save(collection); err != nil {
+			log.Printf("❌ Failed to update dynamic_interfaces collection: %v", err)
+		}
+	}
 }
 
 // ptr 是一个简单的辅助函数，用于将字面量转换为指针 (兼容 PocketBase v0.23 API)
@@ -338,12 +498,14 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.EditorField{Name: "srt_content"})
 		c.Fields.Add(&core.EditorField{Name: "summary"})
 		c.Fields.Add(&core.TextField{Name: "transcription_status"})
-		
+
 		if err := app.Save(c); err != nil {
 			log.Printf("❌ Failed to save episodes collection: %v", err)
 		} else {
 			log.Println("✅ episodes collection created successfully!")
 		}
 	}
-}
 
+	// 3. 确保 dynamic_interfaces 表存在
+	ensureDynamicInterfacesCollection(app)
+}
