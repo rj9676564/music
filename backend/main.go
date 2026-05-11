@@ -112,23 +112,28 @@ func main() {
 				return err
 			}
 
-			interfaces := map[string]map[string]interface{}{}
+			var interfaceItem map[string]interface{}
 			for _, record := range records {
 				if !isDynamicInterfaceEnabled(record.GetString("status")) {
 					continue
 				}
-				pageKey := strings.TrimSpace(record.GetString("page_key"))
-				if pageKey == "" {
-					continue
-				}
-				item := dynamicInterfaceListItem(record)
-				interfaces[pageKey] = item
+				interfaceItem = dynamicInterfaceListItem(record)
+				break
+			}
+
+			if interfaceItem == nil {
+				interfaceItem = map[string]interface{}{"method": http.MethodGet, "url": ""}
+			}
+
+			interfacesJSON, err := json.Marshal(interfaceItem)
+			if err != nil {
+				return err
 			}
 
 			return e.JSON(http.StatusOK, map[string]interface{}{
 				"success":    true,
-				"count":      len(interfaces),
-				"interfaces": interfaces,
+				"count":      1,
+				"interfaces": string(interfacesJSON),
 			})
 		})
 
