@@ -159,6 +159,79 @@ func main() {
 			})
 		})
 
+		// Flutter 动态页接口新增/更新：按 page_key 写入配置
+		e.Router.POST("/api/dynamic/interfaces", func(e *core.RequestEvent) error {
+			var data struct {
+				PageKey     string `json:"pageKey"`
+				ClassName   string `json:"className"`
+				Version     string `json:"version"`
+				Status      string `json:"status"`
+				Description string `json:"description"`
+				Schema      string `json:"schema"`
+				Js          string `json:"jsCode"`
+				Scheme      string `json:"scheme"`
+				ApiMap      string `json:"apiMap"`
+				Value       string `json:"initialData"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return err
+			}
+
+			pageKey := strings.TrimSpace(data.PageKey)
+			if pageKey == "" {
+				return apis.NewBadRequestError("pageKey is required", nil)
+			}
+
+			collection, err := app.FindCollectionByNameOrId("dynamic_interfaces")
+			if err != nil {
+				return err
+			}
+
+			record, err := app.FindFirstRecordByData("dynamic_interfaces", "page_key", pageKey)
+			if err != nil {
+				record = core.NewRecord(collection)
+				record.Set("page_key", pageKey)
+			}
+
+			if strings.TrimSpace(data.ClassName) != "" {
+				record.Set("class_name", strings.TrimSpace(data.ClassName))
+			}
+			if strings.TrimSpace(data.Version) != "" {
+				record.Set("version", strings.TrimSpace(data.Version))
+			}
+			if strings.TrimSpace(data.Status) != "" {
+				record.Set("status", strings.TrimSpace(data.Status))
+			}
+			if strings.TrimSpace(data.Description) != "" {
+				record.Set("description", strings.TrimSpace(data.Description))
+			}
+			if strings.TrimSpace(data.Schema) != "" {
+				record.Set("schema", data.Schema)
+			}
+			if strings.TrimSpace(data.Js) != "" {
+				record.Set("js", data.Js)
+			}
+			if strings.TrimSpace(data.Scheme) != "" {
+				record.Set("scheme", data.Scheme)
+			}
+			if strings.TrimSpace(data.ApiMap) != "" {
+				record.Set("apiMap", data.ApiMap)
+			}
+			if strings.TrimSpace(data.Value) != "" {
+				record.Set("value", data.Value)
+			}
+
+			if err := app.Save(record); err != nil {
+				return err
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"code":    0,
+				"message": "success",
+				"data":    dynamicInterfaceDetail(record),
+			})
+		})
+
 		// 保存 SRT
 		e.Router.POST("/api/save-srt", func(e *core.RequestEvent) error {
 			var data struct {
@@ -385,12 +458,44 @@ func dynamicInterfaceListItem(record *core.Record) map[string]interface{} {
 }
 
 func dynamicInterfaceDetail(record *core.Record) map[string]interface{} {
-	item := dynamicInterfaceListItem(record)
-	item["schema"] = record.GetString("schema")
-	item["js"] = record.GetString("js")
-	item["scheme"] = record.GetString("scheme")
-	item["value"] = record.GetString("value")
-	return item
+	return map[string]interface{}{
+		"version":     record.GetString("version"),
+		"title":       dynamicInterfaceTitle(record),
+		"schema":      parseJSONObject(record.GetString("schema")),
+		"jsCode":      record.GetString("js"),
+		"scheme":      parseJSONObject(record.GetString("scheme")),
+		"apiMap":      parseJSONObject(record.GetString("apiMap")),
+		"initialData": parseJSONObject(record.GetString("value")),
+		"env":         "release",
+	}
+}
+
+func dynamicInterfaceTitle(record *core.Record) string {
+	title := strings.TrimSpace(record.GetString("description"))
+	if title != "" {
+		return title
+	}
+
+	title = strings.TrimSpace(record.GetString("class_name"))
+	if title != "" {
+		return title
+	}
+
+	return strings.TrimSpace(record.GetString("page_key"))
+}
+
+func parseJSONObject(raw string) map[string]interface{} {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return map[string]interface{}{}
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &data); err != nil || data == nil {
+		return map[string]interface{}{}
+	}
+
+	return data
 }
 
 func addTextFieldIfMissing(collection *core.Collection, name string, required bool) bool {
@@ -426,6 +531,7 @@ func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.EditorField{Name: "schema"})
 		c.Fields.Add(&core.EditorField{Name: "js"})
 		c.Fields.Add(&core.EditorField{Name: "scheme"})
+		c.Fields.Add(&core.EditorField{Name: "apiMap"})
 		c.Fields.Add(&core.EditorField{Name: "value"})
 
 		if err := app.Save(c); err != nil {
@@ -445,6 +551,7 @@ func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
 	changed = addEditorFieldIfMissing(collection, "schema") || changed
 	changed = addEditorFieldIfMissing(collection, "js") || changed
 	changed = addEditorFieldIfMissing(collection, "scheme") || changed
+	changed = addEditorFieldIfMissing(collection, "apiMap") || changed
 	changed = addEditorFieldIfMissing(collection, "value") || changed
 
 	if changed {
