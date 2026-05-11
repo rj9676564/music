@@ -6,6 +6,7 @@ interface PlayerSettings {
   color: string;
   activeColor: string;
   backgroundColor: string;
+  backgroundEffect: 'solid' | 'transparent' | 'transparentBlur';
   shadowOpacity: number;
   showDesktopLyric: boolean;
   loop: boolean;
@@ -28,6 +29,7 @@ export const useSettingsStore = create<SettingsState>()(
       color: '#ffffff',
       activeColor: '#ffeb3b',
       backgroundColor: 'rgba(0, 0, 0, 0)',
+      backgroundEffect: 'transparent',
       shadowOpacity: 0.1,
       showDesktopLyric: true,
       loop: false,

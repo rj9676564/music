@@ -41,8 +41,15 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   isTranscribing: false,
   playbackRate: 1.0,
 
-  setAudio: (path, info) => set({ audioPath: path, musicInfo: info, isPlaying: false, currentTime: 0 }),
-  setLyrics: (lyrics) => set({ lyrics }),
+  setAudio: (path, info) =>
+    set({
+      audioPath: path,
+      musicInfo: info,
+      isPlaying: false,
+      currentTime: 0,
+      activeIndex: -1,
+    }),
+  setLyrics: (lyrics) => set({ lyrics, activeIndex: -1 }),
   setPlaying: (isPlaying) => set({ isPlaying }),
   setCurrentTime: (currentTime) => set({ currentTime }),
   setDuration: (duration) => set({ duration }),

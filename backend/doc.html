@@ -433,23 +433,16 @@
                     <span class="path">/api/dynamic/interfaces</span>
                     <span class="badge badge-new">NEW</span>
                 </div>
-                <div class="api-desc">获取 Flutter 动态页当前可用的接口列表。返回值按 pageKey 聚合，包含页面类名、schema/js 路径、版本和状态。</div>
+                <div class="api-desc">获取 Flutter 动态页当前可用的接口列表。仅返回接口的 `method` 和 `url`。</div>
                 <div class="code-block">
                     <div class="code-label">Response</div>
                     <pre>{
   "success": true,
   "count": 1,
   "interfaces": {
-    "BusinessStatusBottomSheet": {
-      "pageKey": "BusinessStatusBottomSheet",
-      "className": "BusinessStatusBottomSheet",
-      "schemaPath": "assets/dynamic_page/modules/BusinessStatusBottomSheet_schema.json",
-      "jsPath": "assets/dynamic_page/modules/BusinessStatusBottomSheet_page.js",
-      "version": "1.0.0",
-      "status": "enabled",
-      "description": "商户状态底部弹窗",
-      "detailUrl": "/api/dynamic/interfaces/BusinessStatusBottomSheet",
-      "updated": "2026-05-11 10:00:00.000Z"
+    ":pageKey": {
+      "method": "GET",
+      "url": "/api/dynamic/interfaces/page_key_here"
     }
   }
 }</pre>
@@ -472,16 +465,17 @@
                     <pre>{
   "success": true,
   "item": {
-    "pageKey": "BusinessStatusBottomSheet",
-    "className": "BusinessStatusBottomSheet",
-    "schemaPath": "assets/dynamic_page/modules/BusinessStatusBottomSheet_schema.json",
-    "jsPath": "assets/dynamic_page/modules/BusinessStatusBottomSheet_page.js",
+    "pageKey": "page_key_here",
+    "className": "class_name_here",
+    "schemaPath": "assets/dynamic_page/modules/page_schema.json",
+    "jsPath": "assets/dynamic_page/modules/page_page.js",
     "schema": "{\"type\":\"object\",\"properties\":{}}",
     "js": "function render(ctx) { return ctx; }",
     "version": "1.0.0",
     "status": "enabled",
-    "description": "商户状态底部弹窗",
-    "detailUrl": "/api/dynamic/interfaces/BusinessStatusBottomSheet",
+    "description": "页面配置描述",
+    "method": "GET",
+    "url": "/api/dynamic/interfaces/page_key_here",
     "updated": "2026-05-11 10:00:00.000Z"
   }
 }</pre>

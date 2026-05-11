@@ -59,7 +59,7 @@ backend/
 | `/_/` | GET | PocketBase 管理后台 |
 | `/api/channels` | GET | 获取频道列表 |
 | `/api/channels/:id/episodes` | GET | 获取节目列表（自动按需刷新） |
-| `/api/dynamic/interfaces` | GET | 获取 Flutter 动态页可用接口列表 |
+| `/api/dynamic/interfaces` | GET | 获取 Flutter 动态页可用接口列表（仅返回 `method` 和 `url`） |
 | `/api/dynamic/interfaces/:pageKey` | GET | 按 pageKey 获取动态页 schema、JS 与版本状态 |
 | `/api/episodes/missing-srt` | GET | 获取待转录任务列表 |
 | `/api/save-srt` | POST | 保存生成好的字幕 |

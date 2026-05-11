@@ -339,6 +339,45 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 style={{ width: "100%" }}
               />
             </div>
+            <div className="setting-item">
+              <label>桌面歌词背景效果</label>
+              <select
+                value={settings.backgroundEffect ?? "solid"}
+                onChange={(e) =>
+                  settings.updateSettings({
+                    backgroundEffect: e.target.value,
+                  })
+                }
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: "4px",
+                  color: "white",
+                  outline: "none",
+                  marginTop: "4px",
+                  fontSize: "0.8rem",
+                }}>
+                <option value="solid" style={{ background: "#222" }}>
+                  纯色背景
+                </option>
+                <option value="transparent" style={{ background: "#222" }}>
+                  全透明
+                </option>
+                <option value="transparentBlur" style={{ background: "#222" }}>
+                  透明 + 模糊
+                </option>
+              </select>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "rgba(255,255,255,0.5)",
+                  marginTop: "4px",
+                }}>
+                透明 + 模糊会保留玻璃感背景，适合字幕覆盖在复杂画面上
+              </div>
+            </div>
           </div>
           <div className="setting-grid colors">
             <ColorPicker

@@ -31,3 +31,5 @@ backend/media_cache/
 backend/*.db
 backend/main
 backend/pb_data/
+backend/.gocache
+backend/.gomodcache

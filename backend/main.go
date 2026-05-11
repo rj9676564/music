@@ -363,17 +363,11 @@ func isDynamicInterfaceEnabled(status string) bool {
 
 func dynamicInterfaceListItem(record *core.Record) map[string]interface{} {
 	pageKey := record.GetString("page_key")
+	detailURL := "/api/dynamic/interfaces/" + pageKey
 
 	return map[string]interface{}{
-		"pageKey":     pageKey,
-		"className":   record.GetString("class_name"),
-		"schemaPath":  record.GetString("schema_path"),
-		"jsPath":      record.GetString("js_path"),
-		"version":     record.GetString("version"),
-		"status":      record.GetString("status"),
-		"description": record.GetString("description"),
-		"detailUrl":   "/api/dynamic/interfaces/" + pageKey,
-		"updated":     record.GetDateTime("updated"),
+		"method": http.MethodGet,
+		"url":    detailURL,
 	}
 }
 

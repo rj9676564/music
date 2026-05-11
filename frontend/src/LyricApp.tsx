@@ -79,6 +79,7 @@ const LyricApp = () => {
     color: "#ffffff",
     activeColor: "#ffeb3b",
     backgroundColor: "rgba(0, 0, 0, 0.4)",
+    backgroundEffect: "solid",
     shadowOpacity: 0.5,
   });
   const [isHovered, setIsHovered] = useState(false);
@@ -132,7 +133,11 @@ const LyricApp = () => {
   useEffect(() => {
     const updateHeight = () => {
       if (boxRef.current && window.ipcRenderer) {
-        const h = Math.ceil(boxRef.current.getBoundingClientRect().height + 30);
+        const extraPadding =
+          settings.backgroundEffect === "transparentBlur" ? 64 : 30;
+        const h = Math.ceil(
+          boxRef.current.getBoundingClientRect().height + extraPadding,
+        );
         if (Math.abs(h - lastHeightRef.current) > 4 && h > 20) {
           window.ipcRenderer.send("resize-lyric-window", { height: h });
           lastHeightRef.current = h;
@@ -143,30 +148,58 @@ const LyricApp = () => {
     const obs = new ResizeObserver(updateHeight);
     if (boxRef.current) obs.observe(boxRef.current);
     return () => obs.disconnect();
-  }, [lyricData.text, settings.fontSize]);
+  }, [lyricData.text, settings.backgroundEffect, settings.fontSize]);
 
   const lines = useMemo(() => lyricData.text.split("\n"), [lyricData.text]);
 
-  const isActuallyTransparent = settings.backgroundColor === "rgba(0,0,0,0)";
+  const backgroundEffect =
+    settings.backgroundEffect ??
+    (settings.backgroundColor === "rgba(0,0,0,0)"
+      ? "transparent"
+      : "solid");
+  const isActuallyTransparent = backgroundEffect === "transparent";
+  const isTransparentBlur = backgroundEffect === "transparentBlur";
 
   const effectiveBg = useMemo(() => {
-    if (isActuallyTransparent) {
+    if (backgroundEffect === "transparent") {
       return isHovered ? "rgba(0, 0, 0, 0.5)" : "transparent";
     }
+    if (backgroundEffect === "transparentBlur") {
+      return isHovered ? "rgba(0, 0, 0, 0.28)" : "rgba(0, 0, 0, 0.18)";
+    }
     return settings.backgroundColor;
-  }, [isHovered, settings.backgroundColor, isActuallyTransparent]);
+  }, [backgroundEffect, isHovered, settings.backgroundColor]);
 
   const effectiveBlur = useMemo(() => {
-    if (isActuallyTransparent) {
+    if (backgroundEffect === "transparent") {
       return isHovered ? "blur(15px)" : "none";
     }
+    if (backgroundEffect === "transparentBlur") {
+      return isHovered ? "blur(18px)" : "blur(14px)";
+    }
     return "blur(15px)";
-  }, [isHovered, isActuallyTransparent]);
+  }, [backgroundEffect, isHovered]);
 
   const hasShadow = useMemo(() => {
-    if (isActuallyTransparent) return isHovered;
+    if (backgroundEffect === "transparent") return isHovered;
     return true;
-  }, [isHovered, isActuallyTransparent]);
+  }, [backgroundEffect, isHovered]);
+
+  const lyricBoxShadow = useMemo(() => {
+    if (!hasShadow) return "none";
+    if (backgroundEffect === "transparentBlur") {
+      return "0 6px 18px rgba(0,0,0,0.16)";
+    }
+    return "0 10px 40px rgba(0,0,0,0.3)";
+  }, [backgroundEffect, hasShadow]);
+
+  const lyricTextShadow = useMemo(() => {
+    if (backgroundEffect === "transparentBlur") return "none";
+    if (backgroundEffect !== "solid" && !isHovered) {
+      return `0 1px 3px rgba(0,0,0,${settings.shadowOpacity})`;
+    }
+    return "none";
+  }, [backgroundEffect, isHovered, settings.shadowOpacity]);
 
 
   return (
@@ -269,14 +302,16 @@ const LyricApp = () => {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            boxShadow: hasShadow ? "0 10px 40px rgba(0,0,0,0.3)" : "none",
+            boxShadow: lyricBoxShadow,
             backdropFilter: effectiveBlur,
             WebkitBackdropFilter: effectiveBlur,
             transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
             border:
               isActuallyTransparent && !isHovered
                 ? "none"
-                : "1px solid rgba(255,255,255,0.1)",
+                : isTransparentBlur
+                  ? "1px solid rgba(255,255,255,0.14)"
+                  : "1px solid rgba(255,255,255,0.1)",
             WebkitAppRegion: isLocked ? "none" : "drag",
             userSelect: "none",
             WebkitUserSelect: "none",
@@ -297,10 +332,7 @@ const LyricApp = () => {
                 fontSize: `${idx === 0 ? settings.fontSize : settings.fontSize * 0.7}px`,
                 fontWeight: idx === 0 ? 700 : 500,
                 color: settings.color,
-                textShadow:
-                  isActuallyTransparent && !isHovered
-                    ? `0 1px 3px rgba(0,0,0,${settings.shadowOpacity})`
-                    : "none",
+                textShadow: lyricTextShadow,
                 userSelect: "none",
                 WebkitUserSelect: "none",
                 WebkitAppRegion: isLocked ? "none" : "drag",
@@ -318,11 +350,7 @@ const LyricApp = () => {
                     currentProgress={lyricData.progress}
                     activeColor={settings.activeColor}
                     color={settings.color}
-                    textShadow={
-                      isActuallyTransparent && !isHovered
-                        ? `0 1px 3px rgba(0,0,0,${settings.shadowOpacity})`
-                        : "none"
-                    }
+                    textShadow={lyricTextShadow}
                   />
                 );
                 currentOffset += word.length;

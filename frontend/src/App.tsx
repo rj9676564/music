@@ -70,6 +70,24 @@ function App() {
   const lastIpcUpdateRef = useRef({ index: -1, progress: -1 });
   const fetchControllerRef = useRef<AbortController | null>(null);
 
+  const findActiveLyricIndex = useCallback((time: number) => {
+    const currentLyrics = usePlayerStore.getState().lyrics;
+    for (let i = currentLyrics.length - 1; i >= 0; i -= 1) {
+      const line = currentLyrics[i];
+      const endTime =
+        line.endTime !== undefined
+          ? line.endTime
+          : i < currentLyrics.length - 1
+            ? currentLyrics[i + 1].time
+            : Number.POSITIVE_INFINITY;
+
+      if (time >= line.time && time <= endTime) {
+        return i;
+      }
+    }
+    return -1;
+  }, []);
+
   const scrollToActive = useCallback(
     (immediate = false) => {
       const list = lyricListRef.current;
@@ -267,14 +285,16 @@ function App() {
     let intervalID: NodeJS.Timeout;
     const sync = () => {
       const rawTime = audio.currentTime;
-      const time = rawTime + settings.lyricOffset; // Apply offset
+      const time = rawTime + settings.lyricOffset;
       if (Math.abs(rawTime - usePlayerStore.getState().currentTime) > 0.05)
         setCurrentTime(rawTime);
       const currentLyrics = usePlayerStore.getState().lyrics;
-      const index = currentLyrics.findLastIndex((l) => time >= l.time);
-      if (index !== -1 && index !== usePlayerStore.getState().activeIndex) {
+      const index = findActiveLyricIndex(time);
+      if (index !== usePlayerStore.getState().activeIndex) {
         setActiveIndex(index);
-        setTimeout(() => scrollToActive(), 0);
+        if (index !== -1) {
+          setTimeout(() => scrollToActive(), 0);
+        }
       }
       if (index !== -1 && settings.showDesktopLyric) {
         const l = currentLyrics[index];
@@ -303,6 +323,7 @@ function App() {
     if (isPlaying) intervalID = setInterval(sync, 16);
     return () => clearInterval(intervalID);
   }, [
+    findActiveLyricIndex,
     isPlaying,
     settings.showDesktopLyric,
     scrollToActive,
@@ -1012,8 +1033,12 @@ function App() {
         : activeIndex < lyrics.length - 1
           ? lyrics[activeIndex + 1].time - l.time
           : 2;
-    return Math.min(1.0, Math.max(0, (currentTime - l.time) / (dur || 1)));
-  }, [activeIndex, lyrics, currentTime]);
+    const adjustedTime = currentTime + settings.lyricOffset;
+    return Math.min(
+      1.0,
+      Math.max(0, (adjustedTime - l.time) / (dur || 1)),
+    );
+  }, [activeIndex, currentTime, lyrics, settings.lyricOffset]);
 
   return (
     <div
