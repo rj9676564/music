@@ -131,9 +131,12 @@ func main() {
 			}
 
 			return e.JSON(http.StatusOK, map[string]interface{}{
-				"success":    true,
-				"count":      1,
-				"interfaces": string(interfacesJSON),
+				"code":    0,
+				"message": "success",
+				"data": map[string]interface{}{
+					"count":      1,
+					"interfaces": string(interfacesJSON),
+				},
 			})
 		})
 
@@ -150,8 +153,9 @@ func main() {
 			}
 
 			return e.JSON(http.StatusOK, map[string]interface{}{
-				"success": true,
-				"item":    dynamicInterfaceDetail(record),
+				"code":    0,
+				"message": "success",
+				"data":    dynamicInterfaceDetail(record),
 			})
 		})
 

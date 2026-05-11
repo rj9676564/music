@@ -437,9 +437,12 @@
                 <div class="code-block">
                     <div class="code-label">Response</div>
 <pre>{
-  "success": true,
-  "count": 1,
-  "interfaces": "{\"method\":\"GET\",\"url\":\"/api/dynamic/interfaces/1\"}"
+  "code": 0,
+  "message": "success",
+  "data": {
+    "count": 1,
+    "interfaces": "{\"method\":\"GET\",\"url\":\"/api/dynamic/interfaces/1\"}"
+  }
 }</pre>
                 </div>
             </div>
@@ -457,9 +460,10 @@
                 <div class="api-desc">进入具体动态页面后，按 pageKey 查询接口配置详情。配置独立存放在 dynamic_interfaces 表，后续可迁移到正式接口以支持灰度和回滚。</div>
                 <div class="code-block">
                     <div class="code-label">Response</div>
-                    <pre>{
-  "success": true,
-  "item": {
+<pre>{
+  "code": 0,
+  "message": "success",
+  "data": {
     "pageKey": "page_key_here",
     "className": "class_name_here",
     "schema": "{\"type\":\"object\",\"properties\":{}}",
