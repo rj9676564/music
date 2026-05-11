@@ -117,8 +117,12 @@ func main() {
 				if !isDynamicInterfaceEnabled(record.GetString("status")) {
 					continue
 				}
+				pageKey := strings.TrimSpace(record.GetString("page_key"))
+				if pageKey == "" {
+					continue
+				}
 				item := dynamicInterfaceListItem(record)
-				interfaces[item["pageKey"].(string)] = item
+				interfaces[pageKey] = item
 			}
 
 			return e.JSON(http.StatusOK, map[string]interface{}{
@@ -407,8 +411,6 @@ func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
 		c.ViewRule = ptr("")
 		c.Fields.Add(&core.TextField{Name: "page_key", Required: true})
 		c.Fields.Add(&core.TextField{Name: "class_name"})
-		c.Fields.Add(&core.TextField{Name: "schema_path"})
-		c.Fields.Add(&core.TextField{Name: "js_path"})
 		c.Fields.Add(&core.TextField{Name: "version"})
 		c.Fields.Add(&core.TextField{Name: "status"})
 		c.Fields.Add(&core.TextField{Name: "description"})
@@ -428,8 +430,6 @@ func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
 	changed := false
 	changed = addTextFieldIfMissing(collection, "page_key", true) || changed
 	changed = addTextFieldIfMissing(collection, "class_name", false) || changed
-	changed = addTextFieldIfMissing(collection, "schema_path", false) || changed
-	changed = addTextFieldIfMissing(collection, "js_path", false) || changed
 	changed = addTextFieldIfMissing(collection, "version", false) || changed
 	changed = addTextFieldIfMissing(collection, "status", false) || changed
 	changed = addTextFieldIfMissing(collection, "description", false) || changed
