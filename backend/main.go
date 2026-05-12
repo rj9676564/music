@@ -140,6 +140,31 @@ func main() {
 			})
 		})
 
+		// Flutter 动态页基础信息列表：只返回所有可用配置的基础元数据，不包含页面详情
+		e.Router.GET("/api/dynamic/interfaces/basic-info", func(e *core.RequestEvent) error {
+			records, err := app.FindRecordsByFilter("dynamic_interfaces", "1=1", "page_key", 200, 0)
+			if err != nil {
+				return err
+			}
+
+			items := make([]map[string]interface{}, 0, len(records))
+			for _, record := range records {
+				if !isDynamicInterfaceEnabled(record.GetString("status")) {
+					continue
+				}
+				items = append(items, dynamicInterfaceBasicInfo(record))
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"code":    0,
+				"message": "success",
+				"data": map[string]interface{}{
+					"count": len(items),
+					"list":  items,
+				},
+			})
+		})
+
 		// Flutter 动态页接口详情：页面进入后按 pageKey 拉取完整 schema/js 配置
 		e.Router.GET("/api/dynamic/interfaces/{key}", func(e *core.RequestEvent) error {
 			key := strings.TrimSpace(e.Request.PathValue("key"))
@@ -457,6 +482,23 @@ func dynamicInterfaceListItem(record *core.Record) map[string]interface{} {
 	}
 }
 
+func dynamicInterfaceBasicInfo(record *core.Record) map[string]interface{} {
+	pageKey := record.GetString("page_key")
+
+	return map[string]interface{}{
+		"pageKey":     pageKey,
+		"className":   record.GetString("class_name"),
+		"version":     record.GetString("version"),
+		"status":      normalizedDynamicInterfaceStatus(record.GetString("status")),
+		"description": record.GetString("description"),
+		"title":       dynamicInterfaceTitle(record),
+		"method":      http.MethodGet,
+		"url":         "/api/dynamic/interfaces/" + pageKey,
+		"created":     record.GetDateTime("created").String(),
+		"updated":     record.GetDateTime("updated").String(),
+	}
+}
+
 func dynamicInterfaceDetail(record *core.Record) map[string]interface{} {
 	return map[string]interface{}{
 		"version":     record.GetString("version"),
@@ -482,6 +524,14 @@ func dynamicInterfaceTitle(record *core.Record) string {
 	}
 
 	return strings.TrimSpace(record.GetString("page_key"))
+}
+
+func normalizedDynamicInterfaceStatus(status string) string {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return "enabled"
+	}
+	return status
 }
 
 func parseJSONObject(raw string) map[string]interface{} {

@@ -481,6 +481,43 @@
                 </button>
                 <div class="api-header">
                     <span class="method get">GET</span>
+                    <span class="path">/api/dynamic/interfaces/basic-info</span>
+                    <span class="badge badge-new">NEW</span>
+                </div>
+                <div class="api-desc">获取所有可用动态页基础信息列表。仅返回 pageKey、className、version、status、description、title、method、url、created、updated，不包含 js、schema、scheme、apiMap、initialData 等页面详情数据。</div>
+                <div class="code-block">
+                    <div class="code-label">Response</div>
+<pre>{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "count": 1,
+    "list": [
+      {
+        "pageKey": "page_key_here",
+        "className": "class_name_here",
+        "version": "2",
+        "status": "enabled",
+        "description": "页面配置描述",
+        "title": "页面配置描述",
+        "method": "GET",
+        "url": "/api/dynamic/interfaces/page_key_here",
+        "created": "2026-05-11 10:00:00.000Z",
+        "updated": "2026-05-11 10:00:00.000Z"
+      }
+    ]
+  }
+}</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method get">GET</span>
                     <span class="path">/api/dynamic/interfaces</span>
                     <span class="badge badge-new">NEW</span>
                 </div>
