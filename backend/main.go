@@ -500,14 +500,29 @@ func dynamicInterfaceBasicInfo(record *core.Record) map[string]interface{} {
 }
 
 func dynamicInterfaceDetail(record *core.Record) map[string]interface{} {
+	schema := parseJSONObject(record.GetString("schema"))
+	apiMap := parseJSONObject(record.GetString("apiMap"))
+	initialData := parseJSONObject(record.GetString("value"))
+
+	if len(apiMap) == 0 {
+		apiMap = objectField(schema, "apiMap")
+	}
+	if len(initialData) == 0 {
+		initialData = objectField(schema, "initialData")
+	}
+
+	delete(schema, "apiMap")
+	delete(schema, "initialData")
+	delete(schema, "jsCode")
+	delete(schema, "scheme")
+
 	return map[string]interface{}{
 		"version":     record.GetString("version"),
 		"title":       dynamicInterfaceTitle(record),
-		"schema":      parseJSONObject(record.GetString("schema")),
+		"schema":      schema,
 		"jsCode":      record.GetString("js"),
-		"scheme":      parseJSONObject(record.GetString("scheme")),
-		"apiMap":      parseJSONObject(record.GetString("apiMap")),
-		"initialData": parseJSONObject(record.GetString("value")),
+		"apiMap":      apiMap,
+		"initialData": initialData,
 		"env":         "release",
 	}
 }
@@ -546,6 +561,15 @@ func parseJSONObject(raw string) map[string]interface{} {
 	}
 
 	return data
+}
+
+func objectField(data map[string]interface{}, key string) map[string]interface{} {
+	value, ok := data[key].(map[string]interface{})
+	if !ok || value == nil {
+		return map[string]interface{}{}
+	}
+
+	return value
 }
 
 func addTextFieldIfMissing(collection *core.Collection, name string, required bool) bool {
