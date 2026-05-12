@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -112,20 +114,19 @@ func main() {
 				return err
 			}
 
-			var interfaceItem map[string]interface{}
+			interfaceItems := make([]map[string]interface{}, 0, len(records))
 			for _, record := range records {
 				if !isDynamicInterfaceEnabled(record.GetString("status")) {
 					continue
 				}
-				interfaceItem = dynamicInterfaceListItem(record)
-				break
+				interfaceItems = append(interfaceItems, dynamicInterfaceListItem(record))
 			}
 
-			if interfaceItem == nil {
-				interfaceItem = map[string]interface{}{"method": http.MethodGet, "url": ""}
+			if len(interfaceItems) == 0 {
+				interfaceItems = append(interfaceItems, map[string]interface{}{"method": http.MethodGet, "url": ""})
 			}
 
-			interfacesJSON, err := json.Marshal(interfaceItem)
+			interfacesJSON, err := json.Marshal(interfaceItems)
 			if err != nil {
 				return err
 			}
@@ -134,7 +135,7 @@ func main() {
 				"code":    0,
 				"message": "success",
 				"data": map[string]interface{}{
-					"count":      1,
+					"count":      len(interfaceItems),
 					"interfaces": string(interfacesJSON),
 				},
 			})
@@ -194,7 +195,6 @@ func main() {
 				Description string `json:"description"`
 				Schema      string `json:"schema"`
 				Js          string `json:"jsCode"`
-				Scheme      string `json:"scheme"`
 				ApiMap      string `json:"apiMap"`
 				Value       string `json:"initialData"`
 			}
@@ -235,9 +235,6 @@ func main() {
 			}
 			if strings.TrimSpace(data.Js) != "" {
 				record.Set("js", data.Js)
-			}
-			if strings.TrimSpace(data.Scheme) != "" {
-				record.Set("scheme", data.Scheme)
 			}
 			if strings.TrimSpace(data.ApiMap) != "" {
 				record.Set("apiMap", data.ApiMap)
@@ -517,6 +514,12 @@ func dynamicInterfaceDetail(record *core.Record) map[string]interface{} {
 	delete(schema, "scheme")
 
 	return map[string]interface{}{
+		"pageKey":     record.GetString("page_key"),
+		"className":   record.GetString("class_name"),
+		"status":      normalizedDynamicInterfaceStatus(record.GetString("status")),
+		"description": record.GetString("description"),
+		"method":      http.MethodGet,
+		"updated":     record.GetDateTime("updated").String(),
 		"version":     record.GetString("version"),
 		"title":       dynamicInterfaceTitle(record),
 		"schema":      schema,
@@ -550,7 +553,7 @@ func normalizedDynamicInterfaceStatus(status string) string {
 }
 
 func parseJSONObject(raw string) map[string]interface{} {
-	raw = strings.TrimSpace(raw)
+	raw = normalizeJSONEditorValue(raw)
 	if raw == "" {
 		return map[string]interface{}{}
 	}
@@ -561,6 +564,23 @@ func parseJSONObject(raw string) map[string]interface{} {
 	}
 
 	return data
+}
+
+var htmlTagPattern = regexp.MustCompile(`<[^>]+>`)
+
+func normalizeJSONEditorValue(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	raw = strings.TrimSpace(html.UnescapeString(raw))
+	if strings.HasPrefix(raw, "<") {
+		raw = htmlTagPattern.ReplaceAllString(raw, "")
+		raw = strings.TrimSpace(html.UnescapeString(raw))
+	}
+
+	return raw
 }
 
 func objectField(data map[string]interface{}, key string) map[string]interface{} {
@@ -604,7 +624,6 @@ func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.TextField{Name: "description"})
 		c.Fields.Add(&core.EditorField{Name: "schema"})
 		c.Fields.Add(&core.EditorField{Name: "js"})
-		c.Fields.Add(&core.EditorField{Name: "scheme"})
 		c.Fields.Add(&core.EditorField{Name: "apiMap"})
 		c.Fields.Add(&core.EditorField{Name: "value"})
 
@@ -624,7 +643,6 @@ func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
 	changed = addTextFieldIfMissing(collection, "description", false) || changed
 	changed = addEditorFieldIfMissing(collection, "schema") || changed
 	changed = addEditorFieldIfMissing(collection, "js") || changed
-	changed = addEditorFieldIfMissing(collection, "scheme") || changed
 	changed = addEditorFieldIfMissing(collection, "apiMap") || changed
 	changed = addEditorFieldIfMissing(collection, "value") || changed
 
