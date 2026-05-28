@@ -15,6 +15,7 @@ type EpisodeData struct {
 	Link        string
 	PubDate     time.Time
 	AudioURL    string
+	ImageURL    string
 	Tags        string
 }
 
@@ -43,6 +44,13 @@ func FetchEpisodes(rssURL string, limit int) ([]EpisodeData, error) {
 			audioURL = item.Enclosures[0].URL
 		}
 
+		imageURL := ""
+		if item.Image != nil {
+			imageURL = item.Image.URL
+		} else if feed.Image != nil {
+			imageURL = feed.Image.URL
+		}
+
 		episodes = append(episodes, EpisodeData{
 			GUID:        item.GUID,
 			Title:       item.Title,
@@ -50,6 +58,7 @@ func FetchEpisodes(rssURL string, limit int) ([]EpisodeData, error) {
 			Link:        item.Link,
 			PubDate:     pubDate,
 			AudioURL:    audioURL,
+			ImageURL:    imageURL,
 			Tags:        strings.Join(item.Categories, ","),
 		})
 	}

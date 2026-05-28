@@ -19,6 +19,7 @@ type Episode struct {
 	Link                string    `json:"link"`
 	PubDate             time.Time `json:"pub_date"`
 	AudioURL            string    `json:"audio_url"`
+	ImageURL            string    `json:"image_url"`
 	SrtContent          string    `json:"srt_content"`
 	Summary             string    `json:"summary"`
 	Tags                string    `json:"tags"`

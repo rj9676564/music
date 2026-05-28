@@ -12,6 +12,11 @@ func TestFetchEpisodes(t *testing.T) {
 <rss version="2.0">
   <channel>
     <title>Mock Podcast</title>
+    <image>
+      <url>http://example.com/channel-cover.jpg</url>
+      <title>Mock Podcast Cover</title>
+      <link>http://example.com/podcast</link>
+    </image>
     <item>
       <title>Episode 1</title>
       <guid>episode-1</guid>
@@ -43,6 +48,9 @@ func TestFetchEpisodes(t *testing.T) {
 	}
 	if ep.AudioURL != "http://example.com/audio1.mp3" {
 		t.Errorf("Expected AudioURL http://example.com/audio1.mp3, got %s", ep.AudioURL)
+	}
+	if ep.ImageURL != "http://example.com/channel-cover.jpg" {
+		t.Errorf("Expected ImageURL http://example.com/channel-cover.jpg, got %s", ep.ImageURL)
 	}
 	if ep.Tags != "Tech" {
 		t.Errorf("Expected Tags Tech, got %s", ep.Tags)

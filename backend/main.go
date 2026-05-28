@@ -401,6 +401,7 @@ func syncChannel(app *pocketbase.PocketBase, channel *core.Record) {
 		record.Set("link", item.Link)
 		record.Set("pub_date", item.PubDate)
 		record.Set("audio_url", item.AudioURL)
+		record.Set("image_url", item.ImageURL)
 
 		app.Save(record)
 	}
@@ -677,7 +678,8 @@ func ensureCollections(app *pocketbase.PocketBase) {
 	}
 
 	// 2. 确保 episodes 表存在
-	if _, err := app.FindCollectionByNameOrId("episodes"); err != nil {
+	episodes, err := app.FindCollectionByNameOrId("episodes")
+	if err != nil {
 		log.Println("👷 Creating 'episodes' collection...")
 		c := &core.Collection{}
 		c.Name = "episodes"
@@ -697,6 +699,7 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.TextField{Name: "title"})
 		c.Fields.Add(&core.DateField{Name: "pub_date"})
 		c.Fields.Add(&core.URLField{Name: "audio_url"})
+		c.Fields.Add(&core.URLField{Name: "image_url"})
 		c.Fields.Add(&core.EditorField{Name: "srt_content"})
 		c.Fields.Add(&core.EditorField{Name: "summary"})
 		c.Fields.Add(&core.TextField{Name: "transcription_status"})
@@ -705,6 +708,21 @@ func ensureCollections(app *pocketbase.PocketBase) {
 			log.Printf("❌ Failed to save episodes collection: %v", err)
 		} else {
 			log.Println("✅ episodes collection created successfully!")
+		}
+		episodes = c
+	}
+
+	if episodes != nil {
+		changed := false
+		if episodes.Fields.GetByName("image_url") == nil {
+			episodes.Fields.Add(&core.URLField{Name: "image_url"})
+			changed = true
+		}
+
+		if changed {
+			if err := app.Save(episodes); err != nil {
+				log.Printf("❌ Failed to update episodes collection: %v", err)
+			}
 		}
 	}
 
