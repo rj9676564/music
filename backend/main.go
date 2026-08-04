@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -275,6 +274,9 @@ func main() {
 				return err
 			}
 
+			// 转录完成后自动翻译，异步执行避免阻塞转录端
+			go autoTranslateEpisode(app, data.GUID, data.SrtContent)
+
 			return e.JSON(http.StatusOK, map[string]bool{"success": true})
 		})
 
@@ -345,6 +347,76 @@ func main() {
 			})
 		})
 
+		// 歌词/字幕翻译：LLM 密钥只保存在服务端环境变量，客户端不传也不需要知道
+		e.Router.POST("/api/translate", func(e *core.RequestEvent) error {
+			var data struct {
+				GUID       string `json:"guid"`
+				SrtContent string `json:"srtContent"`
+				TargetLang string `json:"targetLang"`
+				Force      bool   `json:"force"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return err
+			}
+
+			// 目标语言由服务端统一决定（TRANSLATE_TARGET_LANG），
+			// 保证全站只翻一份、所有客户端复用同一译文
+			targetLang := defaultTranslateLang()
+			if reqLang := strings.TrimSpace(data.TargetLang); reqLang != "" && reqLang != targetLang {
+				return apis.NewBadRequestError(
+					fmt.Sprintf("targetLang must be %q (configured server-side via TRANSLATE_TARGET_LANG)", targetLang), nil)
+			}
+
+			record, _ := app.FindFirstRecordByData("episodes", "guid", data.GUID)
+
+			// 命中缓存：同一目标语言且已有译文时直接返回
+			if !data.Force && record != nil && record.GetString("translation") != "" &&
+				record.GetString("translation_lang") == targetLang {
+				return e.JSON(http.StatusOK, map[string]interface{}{
+					"success":     true,
+					"translation": record.GetString("translation"),
+					"targetLang":  targetLang,
+					"cached":      true,
+				})
+			}
+
+			srtContent := data.SrtContent
+			if strings.TrimSpace(srtContent) == "" && record != nil {
+				srtContent = record.GetString("srt_content")
+			}
+			if strings.TrimSpace(srtContent) == "" {
+				return apis.NewBadRequestError("srtContent is required", nil)
+			}
+
+			cfg, err := resolveLLMConfig("", "", "")
+			if err != nil {
+				return apis.NewBadRequestError("Translate failed: server LLM key not configured", err)
+			}
+
+			translation, err := translateSRT(srtContent, targetLang, cfg)
+			if err != nil {
+				if record != nil {
+					record.Set("translation_status", "failed")
+					app.Save(record)
+				}
+				return apis.NewBadRequestError("Translate failed", err)
+			}
+
+			// 译文是全站共享数据，写回后所有客户端复用
+			if record != nil {
+				record.Set("translation", translation)
+				record.Set("translation_lang", targetLang)
+				record.Set("translation_status", "completed")
+				app.Save(record)
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success":     true,
+				"translation": translation,
+				"targetLang":  targetLang,
+			})
+		})
+
 		return e.Next()
 	})
 
@@ -410,59 +482,72 @@ func syncChannel(app *pocketbase.PocketBase, channel *core.Record) {
 }
 
 func callLLMForSummary(content, customKey, customBase, customModel string) (string, error) {
-	apiKey, apiBase, model := customKey, customBase, customModel
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-	if apiBase == "" {
-		apiBase = os.Getenv("OPENAI_API_BASE")
-	}
-	if apiBase == "" {
-		apiBase = "https://api.openai.com/v1"
-	}
-	if model == "" {
-		model = os.Getenv("OPENAI_MODEL")
-	}
-	if model == "" {
-		model = "gpt-3.5-turbo"
+	cfg, err := resolveLLMConfig(customKey, customBase, customModel)
+	if err != nil {
+		return "", err
 	}
 
-	if apiKey == "" {
-		return "", fmt.Errorf("API Key missing")
-	}
 	text := content
 	if len(text) > 8000 {
 		text = text[:8000]
 	}
 
-	payload := map[string]interface{}{
-		"model":    model,
-		"messages": []map[string]string{{"role": "user", "content": "Summary: " + text}},
-	}
-	jsonData, _ := json.Marshal(payload)
-	req, _ := http.NewRequest("POST", strings.TrimSuffix(apiBase, "/")+"/chat/completions", bytes.NewBuffer(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	return callLLMChat(cfg, "", "Summary: "+text, 60*time.Second)
+}
 
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
+// autoTranslateEpisode 在后台把刚保存的字幕翻译成目标语言，失败只记录日志不影响转录流程
+func autoTranslateEpisode(app *pocketbase.PocketBase, guid, srtContent string) {
+	if !autoTranslateEnabled() {
+		return
+	}
+
+	cfg, err := resolveLLMConfig("", "", "")
 	if err != nil {
-		return "", err
+		log.Printf("⏭️ Auto translate skipped (%s): %v", guid, err)
+		return
 	}
-	defer resp.Body.Close()
 
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+	record, err := app.FindFirstRecordByData("episodes", "guid", guid)
+	if err != nil {
+		log.Printf("⏭️ Auto translate skipped: episode %s not found", guid)
+		return
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
-	if len(result.Choices) > 0 {
-		return result.Choices[0].Message.Content, nil
+	if record.GetString("translation") != "" {
+		return
 	}
-	return "", fmt.Errorf("LLM error")
+
+	targetLang := defaultTranslateLang()
+	record.Set("translation_status", "pending")
+	record.Set("translation_lang", targetLang)
+	if err := app.Save(record); err != nil {
+		log.Printf("❌ Auto translate failed to mark pending (%s): %v", guid, err)
+		return
+	}
+
+	log.Printf("🌐 Auto translating episode %s -> %s", guid, targetLang)
+	translation, err := translateSRT(srtContent, targetLang, cfg)
+
+	// 重新拉取记录，避免覆盖翻译期间的其他写入
+	record, findErr := app.FindFirstRecordByData("episodes", "guid", guid)
+	if findErr != nil {
+		log.Printf("❌ Auto translate: episode %s disappeared", guid)
+		return
+	}
+
+	if err != nil {
+		log.Printf("❌ Auto translate failed (%s): %v", guid, err)
+		record.Set("translation_status", "failed")
+		app.Save(record)
+		return
+	}
+
+	record.Set("translation", translation)
+	record.Set("translation_status", "completed")
+	if err := app.Save(record); err != nil {
+		log.Printf("❌ Auto translate failed to save (%s): %v", guid, err)
+		return
+	}
+	log.Printf("✅ Auto translate completed for %s", guid)
 }
 
 func isDynamicInterfaceEnabled(status string) bool {
@@ -703,6 +788,9 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.EditorField{Name: "srt_content"})
 		c.Fields.Add(&core.EditorField{Name: "summary"})
 		c.Fields.Add(&core.TextField{Name: "transcription_status"})
+		c.Fields.Add(&core.EditorField{Name: "translation"})
+		c.Fields.Add(&core.TextField{Name: "translation_lang"})
+		c.Fields.Add(&core.TextField{Name: "translation_status"})
 
 		if err := app.Save(c); err != nil {
 			log.Printf("❌ Failed to save episodes collection: %v", err)
@@ -716,6 +804,18 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		changed := false
 		if episodes.Fields.GetByName("image_url") == nil {
 			episodes.Fields.Add(&core.URLField{Name: "image_url"})
+			changed = true
+		}
+		if episodes.Fields.GetByName("translation") == nil {
+			episodes.Fields.Add(&core.EditorField{Name: "translation"})
+			changed = true
+		}
+		if episodes.Fields.GetByName("translation_lang") == nil {
+			episodes.Fields.Add(&core.TextField{Name: "translation_lang"})
+			changed = true
+		}
+		if episodes.Fields.GetByName("translation_status") == nil {
+			episodes.Fields.Add(&core.TextField{Name: "translation_status"})
 			changed = true
 		}
 

@@ -63,10 +63,43 @@ backend/
 | `/api/dynamic/interfaces/basic-info` | GET | 获取所有可用动态页基础信息列表（不包含页面详情数据） |
 | `/api/dynamic/interfaces/:pageKey` | GET | 按 pageKey 获取动态页 schema、JS 与版本状态 |
 | `/api/episodes/missing-srt` | GET | 获取待转录任务列表 |
-| `/api/save-srt` | POST | 保存生成好的字幕 |
+| `/api/save-srt` | POST | 保存生成好的字幕（保存后自动触发歌词翻译） |
 | `/api/summary` | POST | 调用 AI 生成内容摘要 |
+| `/api/translate` | POST | 调用 AI 翻译歌词/字幕，结果缓存到 `episodes.translation` |
 | `/media/*` | GET | 访问本地缓存的音频文件 |
 | `/doc` | GET | 查看详细 API 文档 |
+
+## 🌐 歌词翻译 (服务端)
+
+翻译在服务端完成：按 SRT 条目分批送给 LLM（OpenAI 兼容接口），**只翻译文本、原样保留时间轴**，
+结果以 SRT 格式写回 `episodes.translation`，同时记录 `translation_lang` 与 `translation_status`
+（`pending` / `completed` / `failed`）。
+
+- **自动翻译**：`/api/save-srt` 保存字幕成功后，后台异步翻译（不阻塞转录客户端）。
+- **手动翻译**：
+
+  ```bash
+  curl -X POST http://localhost:58081/api/translate \
+    -H 'Content-Type: application/json' \
+    -d '{"guid":"<episode-guid>"}'
+  ```
+
+  可选字段：`srtContent`（不传则读取库中已有字幕）、`force`（忽略缓存重新翻译）。
+  已有译文时直接返回缓存，响应带 `"cached": true`。
+
+> **密钥与语言都在服务端**：请求不接受 `apiKey` / `apiBase` / `model`，客户端无需也无法配置 LLM 密钥；
+> 目标语言统一由 `TRANSLATE_TARGET_LANG` 决定，传入不一致的 `targetLang` 会返回 400。
+> 译文存放在共享的 `episodes` 表，全站只翻译一次，所有用户读同一份。
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `OPENAI_API_KEY` | 无 | LLM 密钥；未配置时自动翻译会跳过 |
+| `OPENAI_API_BASE` | `https://api.openai.com/v1` | OpenAI 兼容接口地址 |
+| `OPENAI_MODEL` | `gpt-3.5-turbo` | 使用的模型 |
+| `TRANSLATE_TARGET_LANG` | `中文` | 默认翻译目标语言 |
+| `AUTO_TRANSLATE` | `true` | 设为 `false` 关闭转录完成后的自动翻译 |
 
 ## 语音转录同步 (Client Sync)
 

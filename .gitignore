@@ -33,3 +33,7 @@ backend/main
 backend/pb_data/
 backend/.gocache
 backend/.gomodcache
+
+# Package manager / tooling caches
+frontend/.pnpm-store/
+frontend/.antigravitycli/
