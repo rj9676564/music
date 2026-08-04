@@ -1,9 +1,9 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import axios from "axios";
 import { parseLrc, parseSrt } from "./utils/lrcParser";
+import type { LyricLine } from "./utils/lrcParser";
 import { useSettingsStore } from "./store/settingsStore";
 import { usePlayerStore } from "./store/playerStore";
-import "./App.css";
 
 // Components
 import { PlayerPanel } from "./components/Player/PlayerPanel";
@@ -12,13 +12,24 @@ import { EpisodesPanel } from "./components/RSS/EpisodesPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
 import {
   SubtitlesIcon,
-  LockIcon,
-  UnlockIcon,
   SettingsIcon,
   RadioIcon,
+  MusicNoteIcon,
 } from "./components/Icons";
 
+const LAST_PLAYBACK_STATE_KEY = "last-playback-state";
+
+type PersistedPlaybackState = {
+  version: 1;
+  audioPath: string;
+  musicInfo: any;
+  currentChannel: any | null;
+  currentTime: number;
+  wasPlaying: boolean;
+};
+
 function App() {
+  const APP_WINDOW_WIDTH = 760;
   const settings = useSettingsStore();
 
   const isPlaying = usePlayerStore((state) => state.isPlaying);
@@ -29,6 +40,7 @@ function App() {
   const activeIndex = usePlayerStore((state) => state.activeIndex);
   const musicInfo = usePlayerStore((state) => state.musicInfo);
   const isTranscribing = usePlayerStore((state) => state.isTranscribing);
+  const playbackRate = usePlayerStore((state) => state.playbackRate);
 
   const setPlaying = usePlayerStore((state) => state.setPlaying);
   const setCurrentTime = usePlayerStore((state) => state.setCurrentTime);
@@ -37,38 +49,86 @@ function App() {
   const setLyrics = usePlayerStore((state) => state.setLyrics);
   const setDuration = usePlayerStore((state) => state.setDuration);
   const setTranscribing = usePlayerStore((state) => state.setTranscribing);
+  const setPlaybackRate = usePlayerStore((state) => state.setPlaybackRate);
   const [isSummarizing, setSummarizing] = useState(false);
 
-  type ViewMode = "player" | "channels" | "episodes";
+  type ViewMode = "player" | "channels" | "episodes" | "settings";
   const [viewMode, setViewMode] = useState<ViewMode>("player");
+  const [playerSubpage, setPlayerSubpage] = useState<"overview" | "controls">(
+    () =>
+      localStorage.getItem("player-subpage") === "controls"
+        ? "controls"
+        : "overview",
+  );
   const [isLyricLocked, setIsLyricLocked] = useState(true); // 默认锁定（点击穿透）
-  const [showSettings, setShowSettings] = useState(false);
   const [podcastEpisodes, setPodcastEpisodes] = useState<any[]>([]);
   const [currentChannel, setCurrentChannel] = useState<any>(null);
   const [channels, setChannels] = useState<any[]>([]);
   const [loadingPodcast, setLoadingPodcast] = useState(false);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [sentenceLoopEnabled, setSentenceLoopEnabled] = useState(false);
+  const [sentenceRepeatCount, setSentenceRepeatCount] = useState(() => {
+    const saved = localStorage.getItem("sentence-repeat-count");
+    const parsed = saved ? Number.parseInt(saved, 10) : 3;
+    return Number.isFinite(parsed) ? Math.min(20, Math.max(1, parsed)) : 3;
+  });
+  const [sentenceLoopTargetIndex, setSentenceLoopTargetIndex] = useState<
+    number | null
+  >(null);
+  const [sentenceLoopCompleted, setSentenceLoopCompleted] = useState(0);
 
-  // Trigger window resize based on view mode (Columns)
   useEffect(() => {
     if (window.ipcRenderer) {
-      if (viewMode === "player") {
-        window.ipcRenderer.send("set-window-size", 530);
-      } else if (viewMode === "channels") {
-        // Player (530) + Channels (330) + 20px gap
-        window.ipcRenderer.send("set-window-size", 530 + 330 + 20); // 880
-      } else if (viewMode === "episodes") {
-        // Player (530) + Channels (330) + Episodes (330) + 2*20px gap
-        window.ipcRenderer.send("set-window-size", 530 + 330 + 330 + 40); // 1230
-      }
+      window.ipcRenderer.send("set-window-size", APP_WINDOW_WIDTH);
     }
-  }, [viewMode]);
+  }, [APP_WINDOW_WIDTH, viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem("player-subpage", playerSubpage);
+  }, [playerSubpage]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const lyricListRef = useRef<HTMLDivElement>(null);
   const lastIpcUpdateRef = useRef({ index: -1, progress: -1 });
   const fetchControllerRef = useRef<AbortController | null>(null);
+  const lastProgressPersistRef = useRef(0);
+  const pendingRestoreRef = useRef<{
+    currentTime: number;
+    shouldPlay: boolean;
+  } | null>(null);
+
+  const resetSentenceLoop = useCallback(() => {
+    setSentenceLoopEnabled(false);
+    setSentenceLoopTargetIndex(null);
+    setSentenceLoopCompleted(0);
+  }, []);
+
+  const getLyricEndTime = useCallback((index: number, currentLyrics: LyricLine[]) => {
+    const line = currentLyrics[index];
+    if (!line) return null;
+    if (line.endTime !== undefined) return line.endTime;
+    if (index < currentLyrics.length - 1) return currentLyrics[index + 1].time;
+    return line.time + 2;
+  }, []);
+
+  const handleSentenceRepeatCountChange = useCallback((count: number) => {
+    const nextCount = Math.min(20, Math.max(1, Math.round(count || 1)));
+    setSentenceRepeatCount(nextCount);
+    localStorage.setItem("sentence-repeat-count", String(nextCount));
+    setSentenceLoopCompleted(0);
+  }, []);
+
+  const toggleSentenceLoop = useCallback(() => {
+    if (sentenceLoopEnabled) {
+      resetSentenceLoop();
+      return;
+    }
+    if (activeIndex === -1 || !lyrics[activeIndex]) return;
+    setSentenceLoopEnabled(true);
+    setSentenceLoopTargetIndex(activeIndex);
+    setSentenceLoopCompleted(0);
+  }, [activeIndex, lyrics, resetSentenceLoop, sentenceLoopEnabled]);
 
   const findActiveLyricIndex = useCallback((time: number) => {
     const currentLyrics = usePlayerStore.getState().lyrics;
@@ -115,6 +175,7 @@ function App() {
           .split("/")
           .pop()
           ?.replace(/\.[^/.]+$/, "") || "未知歌曲";
+      resetSentenceLoop();
       setLyrics([]); // Clear lyrics immediately
       setAudio(file.url, { name, artist: "本地音源" });
       const match = await window.ipcRenderer.invoke(
@@ -139,30 +200,53 @@ function App() {
         }
       }, 0);
     }
-  }, [setAudio, setLyrics, setCurrentTime]);
+  }, [resetSentenceLoop, setAudio, setLyrics, setCurrentTime]);
 
-  const handleOpenLyric = useCallback(async () => {
-    if (!window.ipcRenderer) return;
-    const file = await window.ipcRenderer.invoke("open-file", [
-      { name: "Lyrics", extensions: ["lrc", "srt"] },
-    ]);
-    if (file) {
-      const content = await window.ipcRenderer.invoke(
-        "read-file-content",
-        file.path,
+  const persistPlaybackState = useCallback(
+    (overrides?: Partial<PersistedPlaybackState>) => {
+      const playerState = usePlayerStore.getState();
+      const path = overrides?.audioPath ?? playerState.audioPath;
+      if (!path) return;
+
+      const playbackState: PersistedPlaybackState = {
+        version: 1,
+        audioPath: path,
+        musicInfo: overrides?.musicInfo ?? playerState.musicInfo,
+        currentChannel:
+          overrides?.currentChannel !== undefined
+            ? overrides.currentChannel
+            : currentChannel,
+        currentTime:
+          overrides?.currentTime ??
+          audioRef.current?.currentTime ??
+          playerState.currentTime,
+        wasPlaying:
+          overrides?.wasPlaying ??
+          (audioRef.current ? !audioRef.current.paused : playerState.isPlaying),
+      };
+
+      localStorage.setItem(
+        LAST_PLAYBACK_STATE_KEY,
+        JSON.stringify(playbackState),
       );
-      if (content) {
-        setLyrics(
-          file.path.toLowerCase().endsWith(".srt")
-            ? parseSrt(content)
-            : parseLrc(content),
+      localStorage.setItem(`pos-${path}`, String(playbackState.currentTime));
+
+      if (path.startsWith("local-file://media")) {
+        const filePath = decodeURIComponent(
+          path.replace("local-file://media", ""),
         );
-        if (audioPath) {
-          localStorage.setItem(`lyric-${audioPath}`, file.path);
-        }
+        localStorage.setItem(
+          "last-played-music",
+          JSON.stringify({
+            path: filePath,
+            name: playbackState.musicInfo?.name,
+            artist: playbackState.musicInfo?.artist,
+          }),
+        );
       }
-    }
-  }, [audioPath, setLyrics]);
+    },
+    [currentChannel],
+  );
 
   const togglePlay = useCallback(() => {
     if (!audioPath) {
@@ -177,6 +261,10 @@ function App() {
           `pos-${audioPath}`,
           audioRef.current.currentTime.toString(),
         );
+        persistPlaybackState({
+          currentTime: audioRef.current.currentTime,
+          wasPlaying: false,
+        });
       } else {
         audioRef.current
           .play()
@@ -188,7 +276,7 @@ function App() {
           });
       }
     }
-  }, [isPlaying, audioPath, handleOpenMusic, setPlaying]);
+  }, [isPlaying, audioPath, handleOpenMusic, persistPlaybackState, setPlaying]);
 
   // Audio loading state management
   useEffect(() => {
@@ -290,6 +378,36 @@ function App() {
         setCurrentTime(rawTime);
       const currentLyrics = usePlayerStore.getState().lyrics;
       const index = findActiveLyricIndex(time);
+      if (
+        sentenceLoopEnabled &&
+        sentenceLoopTargetIndex !== null &&
+        sentenceLoopTargetIndex >= 0 &&
+        sentenceLoopTargetIndex < currentLyrics.length
+      ) {
+        const targetLine = currentLyrics[sentenceLoopTargetIndex];
+        const targetEndTime = getLyricEndTime(
+          sentenceLoopTargetIndex,
+          currentLyrics,
+        );
+        if (
+          targetEndTime !== null &&
+          time >= targetEndTime &&
+          sentenceLoopCompleted < sentenceRepeatCount
+        ) {
+          const targetTime = Math.max(0, targetLine.time - settings.lyricOffset);
+          audio.currentTime = targetTime;
+          setCurrentTime(targetTime);
+          setSentenceLoopCompleted((count) => count + 1);
+          return;
+        }
+        if (
+          targetEndTime !== null &&
+          time >= targetEndTime &&
+          sentenceLoopCompleted >= sentenceRepeatCount
+        ) {
+          resetSentenceLoop();
+        }
+      }
       if (index !== usePlayerStore.getState().activeIndex) {
         setActiveIndex(index);
         if (index !== -1) {
@@ -325,7 +443,14 @@ function App() {
   }, [
     findActiveLyricIndex,
     isPlaying,
+    sentenceLoopCompleted,
+    sentenceLoopEnabled,
+    sentenceLoopTargetIndex,
+    sentenceRepeatCount,
     settings.showDesktopLyric,
+    settings.lyricOffset,
+    getLyricEndTime,
+    resetSentenceLoop,
     scrollToActive,
     setCurrentTime,
     setActiveIndex,
@@ -342,17 +467,22 @@ function App() {
       if (e.key === " ") {
         e.preventDefault();
         togglePlay();
+      } else if (e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        toggleSentenceLoop();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
+        resetSentenceLoop();
         if (audioRef.current) audioRef.current.currentTime += 5;
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
+        resetSentenceLoop();
         if (audioRef.current) audioRef.current.currentTime -= 5;
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [togglePlay]);
+  }, [resetSentenceLoop, togglePlay, toggleSentenceLoop]);
 
   // Settings Sync (IPC)
   useEffect(() => {
@@ -400,12 +530,11 @@ function App() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const rate = usePlayerStore.getState().playbackRate;
-    if (audio.playbackRate !== rate) {
-      console.log("⏩ Setting playback rate to:", rate);
-      audio.playbackRate = rate;
+    if (audio.playbackRate !== playbackRate) {
+      console.log("⏩ Setting playback rate to:", playbackRate);
+      audio.playbackRate = playbackRate;
     }
-  }, [usePlayerStore((state) => state.playbackRate), audioPath]);
+  }, [playbackRate, audioPath]);
 
   // 初始化歌词窗口的点击穿透状态
   useEffect(() => {
@@ -421,16 +550,77 @@ function App() {
     }
   }, [settings.showDesktopLyric, isLyricLocked]);
 
+  useEffect(() => {
+    if (!audioPath) return;
+    persistPlaybackState();
+  }, [audioPath, currentChannel, musicInfo, persistPlaybackState]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !audioPath) return;
+
+    const persistProgress = () => {
+      const now = Date.now();
+      if (now - lastProgressPersistRef.current < 1500) return;
+      lastProgressPersistRef.current = now;
+      persistPlaybackState({
+        currentTime: audio.currentTime,
+        wasPlaying: !audio.paused,
+      });
+    };
+
+    const persistImmediately = () => {
+      lastProgressPersistRef.current = Date.now();
+      persistPlaybackState({
+        currentTime: audio.currentTime,
+        wasPlaying: !audio.paused,
+      });
+    };
+
+    audio.addEventListener("timeupdate", persistProgress);
+    audio.addEventListener("seeked", persistImmediately);
+    audio.addEventListener("pause", persistImmediately);
+
+    return () => {
+      audio.removeEventListener("timeupdate", persistProgress);
+      audio.removeEventListener("seeked", persistImmediately);
+      audio.removeEventListener("pause", persistImmediately);
+    };
+  }, [audioPath, persistPlaybackState]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      persistPlaybackState({
+        currentTime: audioRef.current?.currentTime,
+        wasPlaying: !!audioRef.current && !audioRef.current.paused,
+      });
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      handleBeforeUnload();
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [persistPlaybackState]);
+
   // Restore
   useEffect(() => {
     const restore = async () => {
-      const saved = localStorage.getItem("last-played-music");
-      if (saved && window.ipcRenderer) {
-        const { path, name, artist } = JSON.parse(saved);
-        if (await window.ipcRenderer.invoke("check-file-exists", path)) {
-          const full = `local-file://media${path}`;
-          setAudio(full, { name, artist });
-          const savedLyric = localStorage.getItem(`lyric-${full}`);
+      if (!window.ipcRenderer) return;
+
+      const restoreTrack = async (playback: PersistedPlaybackState) => {
+        const isLocal = playback.audioPath.startsWith("local-file://media");
+        if (isLocal) {
+          const filePath = decodeURIComponent(
+            playback.audioPath.replace("local-file://media", ""),
+          );
+          const exists = await window.ipcRenderer.invoke(
+            "check-file-exists",
+            filePath,
+          );
+          if (!exists) return;
+
+          const savedLyric = localStorage.getItem(`lyric-${playback.audioPath}`);
           if (
             savedLyric &&
             (await window.ipcRenderer.invoke("check-file-exists", savedLyric))
@@ -439,35 +629,114 @@ function App() {
               "read-file-content",
               savedLyric,
             );
-            if (content)
+            if (content) {
               setLyrics(
                 savedLyric.toLowerCase().endsWith(".srt")
                   ? parseSrt(content)
                   : parseLrc(content),
               );
+            }
           } else {
             const match = await window.ipcRenderer.invoke(
               "find-matching-lyric",
-              path,
+              filePath,
             );
-            if (match)
+            if (match) {
               setLyrics(
                 match.path.toLowerCase().endsWith(".srt")
                   ? parseSrt(match.content)
                   : parseLrc(match.content),
               );
+            }
           }
+        } else if (playback.musicInfo?.srtContent) {
+          setLyrics(parseSrt(playback.musicInfo.srtContent));
+        } else {
+          setLyrics([]);
+        }
+
+        resetSentenceLoop();
+        setViewMode("player");
+        setCurrentChannel(playback.currentChannel || null);
+        setAudio(playback.audioPath, playback.musicInfo);
+        const savedPosition = localStorage.getItem(`pos-${playback.audioPath}`);
+        pendingRestoreRef.current = {
+          currentTime: Math.max(
+            0,
+            playback.currentTime ||
+              (savedPosition ? Number.parseFloat(savedPosition) : 0) ||
+              0,
+          ),
+          shouldPlay: playback.wasPlaying,
+        };
+      };
+
+      const savedPlayback = localStorage.getItem(LAST_PLAYBACK_STATE_KEY);
+      if (savedPlayback) {
+        try {
+          await restoreTrack(JSON.parse(savedPlayback));
+          return;
+        } catch (error) {
+          console.error("Failed to restore last playback state:", error);
+        }
+      }
+
+      const savedLegacy = localStorage.getItem("last-played-music");
+      if (savedLegacy) {
+        try {
+          const { path, name, artist } = JSON.parse(savedLegacy);
+          const full = `local-file://media${path}`;
           const lp = localStorage.getItem(`pos-${full}`);
-          if (lp && audioRef.current) {
-            audioRef.current.currentTime = parseFloat(lp);
-            setCurrentTime(parseFloat(lp));
-          }
-          setTimeout(() => audioRef.current?.load(), 0);
+          await restoreTrack({
+            version: 1,
+            audioPath: full,
+            musicInfo: { name, artist },
+            currentChannel: null,
+            currentTime: lp ? parseFloat(lp) : 0,
+            wasPlaying: false,
+          });
+        } catch (error) {
+          console.error("Failed to restore legacy playback state:", error);
         }
       }
     };
     restore();
-  }, [setAudio, setLyrics, setCurrentTime]);
+  }, [resetSentenceLoop, setAudio, setCurrentChannel, setCurrentTime, setLyrics]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    const pendingRestore = pendingRestoreRef.current;
+    if (!audio || !audioPath || !pendingRestore) return;
+
+    const applyRestore = () => {
+      audio.currentTime = pendingRestore.currentTime;
+      setCurrentTime(pendingRestore.currentTime);
+      if (pendingRestore.shouldPlay) {
+        audio
+          .play()
+          .then(() => setPlaying(true))
+          .catch((error) =>
+            console.error("Failed to resume last playback:", error),
+          );
+      }
+      pendingRestoreRef.current = null;
+    };
+
+    if (audio.readyState >= 1) {
+      applyRestore();
+      return;
+    }
+
+    const handleLoadedMetadata = () => applyRestore();
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata, {
+      once: true,
+    });
+    audio.load();
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+    };
+  }, [audioPath, setCurrentTime, setPlaying]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -658,6 +927,7 @@ function App() {
 
           if (updatedEpisode.srt_content && !musicInfo.srtContent) {
             console.log("✅ Transcription completed! Loading subtitles...");
+            resetSentenceLoop();
             setLyrics(parseSrt(updatedEpisode.srt_content));
             
             // 更新 musicInfo
@@ -683,7 +953,9 @@ function App() {
     settings.apiUrl,
     audioPath,
     musicInfo,
+    resetSentenceLoop,
     setAudio,
+    setLyrics,
   ]);
 
   const performTranscription = async (path: string, guid?: string) => {
@@ -697,6 +969,7 @@ function App() {
       );
       if (res.success && res.srtContent) {
         const parsed = parseSrt(res.srtContent);
+        resetSentenceLoop();
         setLyrics(parsed);
 
         // Update local state
@@ -937,9 +1210,12 @@ function App() {
     });
 
     if (playUrl) {
+      resetSentenceLoop();
+      setViewMode("player");
       setAudio(playUrl, {
         name: episode.title || currentChannel?.name || "Podcast",
         artist: currentChannel?.author || "Podcast",
+        cover: episode.image_url || currentChannel?.image_url,
         guid: episode.guid,
         summary: episode.summary,
         srtContent: episode.srt_content,
@@ -986,6 +1262,7 @@ function App() {
 
   const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return;
+    resetSentenceLoop();
 
     // Remember if audio was playing before seeking
     const wasPlaying = !audioRef.current.paused;
@@ -1051,29 +1328,23 @@ function App() {
         height: "100vh",
         boxSizing: "border-box",
       }}>
-      {/* App Header moved to top-level */}
-      <div className="app-header">
-        <div className="top-toolbar">
-          {settings.showDesktopLyric && (
-            <button
-              className={`tool-btn ${!isLyricLocked ? "active" : ""}`}
-              onClick={() => {
-                const newLockState = !isLyricLocked;
-                setIsLyricLocked(newLockState);
-                (window as any).ipcRenderer?.invoke(
-                  "set-lyric-ignore-mouse-events",
-                  newLockState,
-                  { forward: true },
-                );
-              }}
-              title={isLyricLocked ? "解锁（可拖动）" : "锁定（点击穿透）"}>
-              {isLyricLocked ? (
-                <LockIcon className="icon" />
-              ) : (
-                <UnlockIcon className="icon" />
-              )}
-            </button>
-          )}
+
+      <div className="sidebar-rail">
+        <div className="sidebar-primary-actions">
+          <button
+            className={`tool-btn ${viewMode === "player" ? "active" : ""}`}
+            onClick={() => setViewMode("player")}
+            title="播放器">
+            <MusicNoteIcon className="icon" size={20} />
+          </button>
+          <button
+            className={`tool-btn ${
+              viewMode === "channels" || viewMode === "episodes" ? "active" : ""
+            }`}
+            onClick={() => setViewMode("channels")}
+            title="频道与节目">
+            <RadioIcon className="icon" />
+          </button>
           <button
             className={`tool-btn ${settings.showDesktopLyric ? "active" : ""}`}
             onClick={() => {
@@ -1084,82 +1355,104 @@ function App() {
             title={settings.showDesktopLyric ? "隐藏桌面歌词" : "显示桌面歌词"}>
             <SubtitlesIcon className="icon" />
           </button>
+        </div>
+
+        <div className="sidebar-secondary-actions">
           <button
-            className={`tool-btn ${showSettings ? "active" : ""}`}
-            onClick={() => setShowSettings(!showSettings)}
+            className={`tool-btn tool-btn-secondary ${
+              viewMode === "settings" ? "active" : ""
+            }`}
+            onClick={() => setViewMode("settings")}
             title="设置">
             <SettingsIcon className="icon" />
-          </button>
-
-          <button
-            className={`tool-btn ${viewMode === "channels" ? "active" : ""}`}
-            onClick={() =>
-              setViewMode(viewMode === "channels" ? "player" : "channels")
-            }
-            title="频道列表">
-            <RadioIcon className="icon" />
           </button>
         </div>
       </div>
 
-      {/* Settings Dialog moved to top-level */}
-      {showSettings && (
-        <SettingsDialog
-          onClose={() => setShowSettings(false)}
-          settings={settings}
-          isTranscribing={isTranscribing}
-          onAiTranscribe={handleAiTranscribe}
-          onResetLyricWindow={() =>
-            (window as any).ipcRenderer?.invoke("reset-lyric-window")
-          }
-        />
-      )}
-
-      {/* Player Panel */}
-      <PlayerPanel
-        settings={settings}
-        musicInfo={musicInfo}
-        currentTime={currentTime}
-        duration={duration}
-        isPlaying={isPlaying}
-        isLoading={isLoadingAudio}
-        isTranscribing={isTranscribing}
-        isSummarizing={isSummarizing}
-        onSummarize={handleSummarize}
-        playbackRate={usePlayerStore((state) => state.playbackRate)}
-        setPlaybackRate={usePlayerStore((state) => state.setPlaybackRate)}
-        togglePlay={togglePlay}
-        lyrics={lyrics}
-        activeIndex={activeIndex}
-        lyricListRef={lyricListRef}
-        currentProgress={currentProgress}
-        handleOpenMusic={handleOpenMusic}
-        handleOpenLyric={handleOpenLyric}
-        handleSeek={handleProgressMouseDown}
-      />
-
-      {/* Channels Panel */}
-      {(viewMode === "channels" || viewMode === "episodes") && (
-        <ChannelsPanel
-          loadingChannels={loadingChannels}
-          channels={channels}
-          currentChannel={currentChannel}
-          loadingPodcast={loadingPodcast}
-          onFetchChannel={handleFetchChannel}
-          onClose={() => setViewMode("player")}
-        />
-      )}
-
-      {/* Episodes Panel */}
-      {viewMode === "episodes" && (
-        <EpisodesPanel
-          currentChannel={currentChannel}
-          episodes={podcastEpisodes}
-          onPlayEpisode={handlePlayPodcast}
-          onDownloadEpisode={handleDownload}
-          onRequestTranscription={handleRequestTranscription}
-        />
-      )}
+      <div
+        className={`content-shell ${
+          viewMode === "player" ? "content-shell-player" : "content-shell-browser"
+        }`}>
+        {viewMode === "player" ? (
+          <div className="player-stage">
+            <PlayerPanel
+              settings={settings}
+              hasAudio={!!audioPath}
+              musicInfo={musicInfo}
+              currentTime={currentTime}
+              duration={duration}
+              isPlaying={isPlaying}
+              isLoading={isLoadingAudio}
+              isTranscribing={isTranscribing}
+              isSummarizing={isSummarizing}
+              onSummarize={handleSummarize}
+              playbackRate={playbackRate}
+              setPlaybackRate={setPlaybackRate}
+              playerSubpage={playerSubpage}
+              setPlayerSubpage={setPlayerSubpage}
+              togglePlay={togglePlay}
+              lyrics={lyrics}
+              activeIndex={activeIndex}
+              lyricListRef={lyricListRef}
+              currentProgress={currentProgress}
+              sentenceLoopEnabled={sentenceLoopEnabled}
+              sentenceRepeatCount={sentenceRepeatCount}
+              sentenceLoopCompleted={sentenceLoopCompleted}
+              canUseSentenceLoop={activeIndex !== -1 && !!lyrics[activeIndex]}
+              onToggleSentenceLoop={toggleSentenceLoop}
+              onSentenceRepeatCountChange={handleSentenceRepeatCountChange}
+              showDesktopLyric={settings.showDesktopLyric}
+              isLyricLocked={isLyricLocked}
+              onToggleLyricLock={() => {
+                const newLockState = !isLyricLocked;
+                setIsLyricLocked(newLockState);
+                (window as any).ipcRenderer?.invoke(
+                  "set-lyric-ignore-mouse-events",
+                  newLockState,
+                  { forward: true },
+                );
+              }}
+              handleOpenMusic={handleOpenMusic}
+              handleSeek={handleProgressMouseDown}
+            />
+          </div>
+        ) : viewMode === "settings" ? (
+          <div className="browser-stage">
+            <SettingsDialog
+              embedded
+              onClose={() => setViewMode("player")}
+              settings={settings}
+              isTranscribing={isTranscribing}
+              onAiTranscribe={handleAiTranscribe}
+              onResetLyricWindow={() =>
+                (window as any).ipcRenderer?.invoke("reset-lyric-window")
+              }
+            />
+          </div>
+        ) : viewMode === "channels" ? (
+          <div className="browser-stage">
+            <ChannelsPanel
+              loadingChannels={loadingChannels}
+              channels={channels}
+              currentChannel={currentChannel}
+              loadingPodcast={loadingPodcast}
+              onFetchChannel={handleFetchChannel}
+              onClose={() => setViewMode("player")}
+            />
+          </div>
+        ) : (
+          <div className="browser-stage">
+            <EpisodesPanel
+              currentChannel={currentChannel}
+              episodes={podcastEpisodes}
+              onBack={() => setViewMode("channels")}
+              onPlayEpisode={handlePlayPodcast}
+              onDownloadEpisode={handleDownload}
+              onRequestTranscription={handleRequestTranscription}
+            />
+          </div>
+        )}
+      </div>
 
       {audioPath && <audio ref={audioRef} src={audioPath} key={audioPath} />}
     </div>

@@ -85,7 +85,8 @@ const LyricApp = () => {
   const [isHovered, setIsHovered] = useState(false);
   const [isLocked, setIsLocked] = useState(true); // 默认锁定（点击穿透）
   const boxRef = useRef<HTMLDivElement>(null);
-  const lastHeightRef = useRef(0);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const lastWindowSizeRef = useRef({ width: 0, height: 0 });
   const dragHandleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -131,22 +132,48 @@ const LyricApp = () => {
   }, []);
 
   useEffect(() => {
-    const updateHeight = () => {
-      if (boxRef.current && window.ipcRenderer) {
-        const extraPadding =
-          settings.backgroundEffect === "transparentBlur" ? 64 : 30;
-        const h = Math.ceil(
-          boxRef.current.getBoundingClientRect().height + extraPadding,
-        );
-        if (Math.abs(h - lastHeightRef.current) > 4 && h > 20) {
-          window.ipcRenderer.send("resize-lyric-window", { height: h });
-          lastHeightRef.current = h;
-        }
+    const updateWindowSize = () => {
+      if (!boxRef.current || !measureRef.current || !window.ipcRenderer) {
+        return;
+      }
+
+      const horizontalPadding =
+        settings.backgroundEffect === "transparentBlur" ? 96 : 72;
+      const verticalPadding =
+        settings.backgroundEffect === "transparentBlur" ? 64 : 30;
+      const maxWidth = Math.max(
+        360,
+        Math.min(1100, Math.floor(window.screen.availWidth * 0.82)),
+      );
+      const naturalWidth = Math.ceil(
+        measureRef.current.getBoundingClientRect().width + horizontalPadding,
+      );
+      const renderedHeight = Math.ceil(
+        boxRef.current.getBoundingClientRect().height + verticalPadding,
+      );
+      const targetWidth = Math.max(280, Math.min(maxWidth, naturalWidth));
+      const targetHeight = Math.max(40, renderedHeight);
+      const last = lastWindowSizeRef.current;
+
+      if (
+        Math.abs(targetWidth - last.width) > 4 ||
+        Math.abs(targetHeight - last.height) > 4
+      ) {
+        window.ipcRenderer.send("resize-lyric-window", {
+          width: targetWidth,
+          height: targetHeight,
+        });
+        lastWindowSizeRef.current = {
+          width: targetWidth,
+          height: targetHeight,
+        };
       }
     };
-    updateHeight();
-    const obs = new ResizeObserver(updateHeight);
+
+    updateWindowSize();
+    const obs = new ResizeObserver(updateWindowSize);
     if (boxRef.current) obs.observe(boxRef.current);
+    if (measureRef.current) obs.observe(measureRef.current);
     return () => obs.disconnect();
   }, [lyricData.text, settings.backgroundEffect, settings.fontSize]);
 
@@ -292,13 +319,39 @@ const LyricApp = () => {
           WebkitUserSelect: "none",
         } as React.CSSProperties}>
         <div
+          ref={measureRef}
+          style={{
+            position: "absolute",
+            left: "-99999px",
+            top: 0,
+            visibility: "hidden",
+            pointerEvents: "none",
+            width: "fit-content",
+            maxWidth: "none",
+            padding: "16px 32px",
+            fontFamily: "inherit",
+          }}>
+          {lines.map((line, idx) => (
+            <div
+              key={`measure-${idx}`}
+              style={{
+                whiteSpace: "nowrap",
+                fontSize: `${idx === 0 ? settings.fontSize : settings.fontSize * 0.7}px`,
+                fontWeight: idx === 0 ? 700 : 500,
+                marginBottom: idx < lines.length - 1 ? "8px" : 0,
+              }}>
+              {line}
+            </div>
+          ))}
+        </div>
+        <div
           ref={boxRef}
           style={{
             backgroundColor: effectiveBg,
             padding: "16px 32px",
             borderRadius: "20px",
-            width: "auto",
-            maxWidth: "92%",
+            width: "fit-content",
+            maxWidth: "calc(100vw - 24px)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -337,11 +390,14 @@ const LyricApp = () => {
                 WebkitUserSelect: "none",
                 WebkitAppRegion: isLocked ? "none" : "drag",
                 pointerEvents: "auto",
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
               } as React.CSSProperties}>
               {lineWords.map((word, wordIdx) => {
                 const start = currentOffset / lineLength;
                 const end = (currentOffset + word.length) / lineLength;
-                const elem = (
+                const elem = word.trim() ? (
                   <KaraokeWord
                     key={wordIdx}
                     word={word}
@@ -352,6 +408,8 @@ const LyricApp = () => {
                     color={settings.color}
                     textShadow={lyricTextShadow}
                   />
+                ) : (
+                  <span key={wordIdx}>{word}</span>
                 );
                 currentOffset += word.length;
                 return elem;

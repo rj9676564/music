@@ -63,9 +63,9 @@ export function parseSrt(srtContent: string): LyricLine[] {
     const textLines = lines.slice(timeLineIndex + 1)
     if (textLines.length === 0) return
 
-    // 合并文本行，移除 HTML 标签，保留换行
+    // 合并同一字幕块内的文本行，避免一句字幕被无关换行拆开
     const text = textLines
-      .join('\n')
+      .join(' ')
       .replace(/<[^>]*>/g, '') // 移除 HTML 标签
       .replace(/&nbsp;/g, ' ') // 替换 HTML 实体
       .replace(/&amp;/g, '&')
@@ -73,6 +73,7 @@ export function parseSrt(srtContent: string): LyricLine[] {
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
       .trim()
 
     if (text) {

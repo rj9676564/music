@@ -1,165 +1,164 @@
 import React from "react";
+import { MusicNoteIcon } from "../Icons";
+import { ArtworkTile } from "../ui/ArtworkTile";
+import { Badge } from "../ui/Badge";
+import type { BadgeTone } from "../ui/Badge";
+import { ListItemCard } from "../ui/ListItemCard";
+import { PanelHeader } from "../ui/PanelHeader";
+import { color, fontSize, radius } from "../../styles/tokens";
+
+interface Episode {
+  guid?: string;
+  title?: string;
+  pubDate?: string;
+  image_url?: string;
+  srt_content?: string;
+  transcription_status?: string;
+}
 
 interface EpisodesPanelProps {
-  currentChannel: any;
-  episodes: any[];
-  onPlayEpisode: (episode: any) => void;
-  onDownloadEpisode: (episode: any, e: React.MouseEvent) => void;
-  onRequestTranscription?: (episode: any, e: React.MouseEvent) => void;
+  currentChannel: { name?: string; image_url?: string } | null;
+  episodes: Episode[];
+  onBack?: () => void;
+  onPlayEpisode: (episode: Episode) => void;
+  onDownloadEpisode: (episode: Episode, e: React.MouseEvent) => void;
+  onRequestTranscription?: (episode: Episode, e: React.MouseEvent) => void;
 }
+
+const TRANSCRIPTION_LABELS: Record<string, { label: string; tone: BadgeTone }> = {
+  pending: { label: "排队中", tone: "warning" },
+  processing: { label: "转录中...", tone: "warning" },
+  completed: { label: "已转录", tone: "success" },
+};
 
 export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
   currentChannel,
   episodes,
+  onBack,
   onPlayEpisode,
   onDownloadEpisode,
   onRequestTranscription,
 }) => {
+  const actionButtonStyle: React.CSSProperties = {
+    background: "transparent",
+    border: `1px solid ${color.fg5}`,
+    color: "white",
+    borderRadius: radius.sm,
+    cursor: "pointer",
+    padding: "4px 8px",
+    fontSize: fontSize.sm,
+  };
+
   return (
     <div
-      className="glass-card"
+      className="browser-panel"
       style={{
-        width: "330px",
-        height: "100%",
+        width: "100%",
         display: "flex",
         flexDirection: "column",
-        padding: "20px 0 20px 20px", // 右侧不留 padding，让滚动条靠右
         animation: "fadeIn 0.3s ease",
         flexShrink: 0,
+        flex: 1,
+        minHeight: 0,
+        borderRadius: "18px",
       }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          marginBottom: "20px",
-          gap: "10px",
-          paddingRight: "20px", // 标题区域补上 padding
-        }}>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "1.2rem",
-            color: "white",
-            fontWeight: 600,
-          }}>
-          {currentChannel?.name || "节目列表"}
-        </h2>
-      </div>
+      <PanelHeader
+        eyebrow="Playlist"
+        title={currentChannel?.name || "节目列表"}
+        left={
+          onBack && (
+            <button
+              className="browser-back-btn"
+              onClick={onBack}
+              style={{ border: "none" }}>
+              {"<"}
+            </button>
+          )
+        }
+      />
 
       <div
-        className="custom-scrollbar"
-        style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
-        {" "}
-        {episodes.map((episode) => (
-          <div
-            key={episode.guid || episode.title}
-            onClick={() => onPlayEpisode(episode)}
-            style={{
-              padding: "12px",
-              background: "rgba(255, 255, 255, 0.05)",
-              borderRadius: "8px",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              cursor: "pointer",
-              marginBottom: "10px",
-              position: "relative",
-            }}>
-            <div
-              style={{
-                fontSize: "0.9rem",
-                fontWeight: 600,
-                color: "#fff",
-                marginBottom: "6px",
-                paddingRight: "60px", // 增加右侧间距给按钮
-                lineHeight: 1.3,
-              }}>
-              {episode.title}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {episode.pubDate && (
-                <div
-                  style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)" }}>
-                  {new Date(episode.pubDate).toLocaleDateString("zh-CN")}
-                </div>
-              )}
-              {episode.transcription_status && (
+        className="custom-scrollbar browser-list"
+        style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+        {episodes.map((episode) => {
+          const status = episode.transcription_status
+            ? (TRANSCRIPTION_LABELS[episode.transcription_status] ?? {
+                label: "转录失败",
+                tone: "danger" as BadgeTone,
+              })
+            : null;
+
+          return (
+            <ListItemCard
+              key={episode.guid || episode.title}
+              onClick={() => onPlayEpisode(episode)}>
+              <ArtworkTile
+                src={episode.image_url || currentChannel?.image_url}
+                alt={episode.title}
+                fallback={<MusicNoteIcon size={24} />}
+              />
+
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: "0.65rem",
-                    padding: "1px 4px",
-                    borderRadius: "3px",
-                    background:
-                      episode.transcription_status === "completed"
-                        ? "rgba(76, 175, 80, 0.2)"
-                        : episode.transcription_status === "failed"
-                          ? "rgba(244, 67, 54, 0.2)"
-                          : "rgba(255, 193, 7, 0.2)",
-                    color:
-                      episode.transcription_status === "completed"
-                        ? "#81c784"
-                        : episode.transcription_status === "failed"
-                          ? "#e57373"
-                          : "#ffd54f",
-                    border: `1px solid ${
-                      episode.transcription_status === "completed"
-                        ? "rgba(76, 175, 80, 0.3)"
-                        : episode.transcription_status === "failed"
-                          ? "rgba(244, 67, 54, 0.3)"
-                          : "rgba(255, 193, 7, 0.3)"
-                    }`,
+                    fontSize: fontSize.xl,
+                    fontWeight: 600,
+                    color: "#fff",
+                    marginBottom: "6px",
+                    paddingRight: "96px",
+                    lineHeight: 1.3,
                   }}>
-                  {episode.transcription_status === "pending"
-                    ? "排队中"
-                    : episode.transcription_status === "processing"
-                      ? "转录中..."
-                      : episode.transcription_status === "completed"
-                        ? "已转录"
-                        : "转录失败"}
+                  {episode.title}
                 </div>
-              )}
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                right: "10px",
-                top: "10px",
-                display: "flex",
-                gap: "5px",
-              }}>
-              {!episode.srt_content &&
-                episode.transcription_status !== "pending" &&
-                episode.transcription_status !== "processing" && (
-                  <button
-                    onClick={(e) => onRequestTranscription?.(episode, e)}
-                    title="请求生成字幕"
-                    style={{
-                      background: "rgba(63, 81, 181, 0.2)",
-                      border: "1px solid rgba(63, 81, 181, 0.4)",
-                      color: "#9fa8da",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      padding: "4px 8px",
-                      fontSize: "0.8rem",
-                    }}>
-                    🪄
-                  </button>
-                )}
-              <button
-                onClick={(e) => onDownloadEpisode(episode, e)}
-                title="缓存音频"
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    flexWrap: "wrap",
+                  }}>
+                  {episode.pubDate && (
+                    <div style={{ fontSize: "0.82rem", color: color.fg3 }}>
+                      {new Date(episode.pubDate).toLocaleDateString("zh-CN")}
+                    </div>
+                  )}
+                  {status && <Badge tone={status.tone}>{status.label}</Badge>}
+                </div>
+              </div>
+
+              <div
                 style={{
-                  background: "transparent",
-                  border: "1px solid rgba(255, 255, 255, 0.2)",
-                  color: "white",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  padding: "4px 8px",
-                  fontSize: "0.8rem",
+                  position: "absolute",
+                  right: "14px",
+                  top: "14px",
+                  display: "flex",
+                  gap: "5px",
                 }}>
-                ⬇
-              </button>
-            </div>
-          </div>
-        ))}
+                {!episode.srt_content &&
+                  episode.transcription_status !== "pending" &&
+                  episode.transcription_status !== "processing" && (
+                    <button
+                      onClick={(e) => onRequestTranscription?.(episode, e)}
+                      title="请求生成字幕"
+                      style={{
+                        ...actionButtonStyle,
+                        background: "rgba(63, 81, 181, 0.2)",
+                        border: "1px solid rgba(63, 81, 181, 0.4)",
+                        color: "#9fa8da",
+                      }}>
+                      🪄
+                    </button>
+                  )}
+                <button
+                  onClick={(e) => onDownloadEpisode(episode, e)}
+                  title="缓存音频"
+                  style={actionButtonStyle}>
+                  ⬇
+                </button>
+              </div>
+            </ListItemCard>
+          );
+        })}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import type { LyricLine } from '../utils/lrcParser';
 interface MusicInfo {
   name: string;
   artist: string;
+  cover?: string;
   guid?: string;
   summary?: string;
   srtContent?: string;

@@ -1,0 +1,80 @@
+/*
+ * Design tokens — the ONLY place a raw color literal should be written.
+ *
+ * Imported at the top of index.css, which both renderer entries load
+ * (main.tsx and lyric.tsx), so the desktop-lyric overlay shares the theme.
+ *
+ * Components that are heavily inline-styled consume these through
+ * src/styles/tokens.ts, which exports the matching var() strings.
+ */
+:root {
+  /* --- Brand ------------------------------------------------------- */
+  --c-accent: #f5576c;
+  --c-accent-2: #f093fb;
+  --g-brand: linear-gradient(45deg, var(--c-accent) 0%, var(--c-accent-2) 100%);
+  --g-brand-h: linear-gradient(90deg, var(--c-accent) 0%, var(--c-accent-2) 100%);
+  --g-artwork: linear-gradient(135deg, #4f8cff 0%, #7562ff 100%);
+  --g-app-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+
+  /* Accent alphas — semantic steps, replacing 11 ad-hoc rgba(245,87,108,a) */
+  --c-accent-bg: rgba(245, 87, 108, 0.14);
+  --c-accent-bg-strong: rgba(245, 87, 108, 0.2);
+  --c-accent-border: rgba(245, 87, 108, 0.35);
+
+  /* --- Neutrals ---------------------------------------------------- */
+  /* Foreground: light -> dim. Replaces 17 distinct white alphas. */
+  --fg-1: rgba(255, 255, 255, 0.95);
+  --fg-2: rgba(255, 255, 255, 0.72);
+  --fg-3: rgba(255, 255, 255, 0.55);
+  --fg-4: rgba(255, 255, 255, 0.35);
+  --fg-5: rgba(255, 255, 255, 0.2);
+
+  /* Surfaces and borders */
+  --surface-1: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.05);
+  --surface-3: rgba(255, 255, 255, 0.14);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.12);
+  --scrim: rgba(0, 0, 0, 0.3);
+
+  /* --- Status ------------------------------------------------------ */
+  --c-success: #4ade80;
+  --c-success-bg: rgba(74, 222, 128, 0.14);
+  --c-success-border: rgba(74, 222, 128, 0.32);
+  --c-warning: #fbbf24;
+  --c-warning-bg: rgba(251, 191, 36, 0.14);
+  --c-warning-border: rgba(251, 191, 36, 0.32);
+  --c-danger: #f87171;
+  --c-danger-bg: rgba(248, 113, 113, 0.14);
+  --c-danger-border: rgba(248, 113, 113, 0.32);
+
+  /* --- Geometry ---------------------------------------------------- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --r-pill: 999px;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+
+  --ctl-h: 42px;
+
+  /* --- Type -------------------------------------------------------- */
+  --fs-xs: 0.74rem;
+  --fs-sm: 0.8rem;
+  --fs-md: 0.9rem;
+  --fs-lg: 0.95rem;
+  --fs-xl: 1.05rem;
+
+  /* --- Motion / elevation ------------------------------------------ */
+  --t-fast: 0.15s ease;
+  --t-base: 0.3s ease;
+  --shadow-1: 0 4px 15px rgba(0, 0, 0, 0.2);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --blur-panel: blur(12px);
+}

@@ -1,8 +1,10 @@
 import React from "react";
 import { CloseIcon } from "./Icons";
 import { ColorPicker } from "./ColorPicker";
+import { color, gradient } from "../styles/tokens";
 
 interface SettingsDialogProps {
+  embedded?: boolean;
   onClose: () => void;
   settings: any;
   isTranscribing: boolean;
@@ -11,6 +13,7 @@ interface SettingsDialogProps {
 }
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({
+  embedded = false,
   onClose,
   settings,
   isTranscribing,
@@ -32,9 +35,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     fetchDevices();
   }, []);
 
-  return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
+  const content = (
+    <>
         <div className="settings-dialog-header">
           <h2 className="settings-dialog-title">歌词设置</h2>
           <button className="settings-close-btn" onClick={onClose}>
@@ -50,7 +52,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 padding: "10px",
                 background: isTranscribing
                   ? "#444"
-                  : "linear-gradient(45deg, #f5576c 0%, #f093fb 100%)",
+                  : gradient.brand,
                 border: "none",
                 color: "#fff",
                 fontWeight: "bold",
@@ -124,7 +126,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   }
                   style={{
                     padding: "4px 12px",
-                    background: "rgba(255,255,255,0.1)",
+                    background: color.hairlineStrong,
                     border: "1px solid rgba(255,255,255,0.2)",
                     borderRadius: "4px",
                     color: "white",
@@ -153,7 +155,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   }
                   style={{
                     padding: "4px 12px",
-                    background: "rgba(255,255,255,0.1)",
+                    background: color.hairlineStrong,
                     border: "1px solid rgba(255,255,255,0.2)",
                     borderRadius: "4px",
                     color: "white",
@@ -169,10 +171,10 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   }
                   style={{
                     padding: "4px 12px",
-                    background: "rgba(245, 87, 108, 0.2)",
-                    border: "1px solid rgba(245, 87, 108, 0.4)",
+                    background: color.accentBgStrong,
+                    border: `1px solid ${color.accentBorder}`,
                     borderRadius: "4px",
-                    color: "#f5576c",
+                    color: color.accent,
                     cursor: "pointer",
                   }}>
                   重置
@@ -181,7 +183,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               <div
                 style={{
                   fontSize: "0.75rem",
-                  color: "rgba(255,255,255,0.5)",
+                  color: color.fg3,
                   marginTop: "4px",
                 }}>
                 如果歌词显示过早，请增加偏移；如果过晚，请减少偏移
@@ -199,7 +201,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 style={{
                   width: "100%",
                   padding: "8px",
-                  background: "rgba(255,255,255,0.1)",
+                  background: color.hairlineStrong,
                   border: "1px solid rgba(255,255,255,0.2)",
                   borderRadius: "4px",
                   color: "white",
@@ -221,7 +223,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 style={{
                   width: "100%",
                   padding: "8px",
-                  background: "rgba(255,255,255,0.1)",
+                  background: color.hairlineStrong,
                   border: "1px solid rgba(255,255,255,0.2)",
                   borderRadius: "4px",
                   color: "white",
@@ -243,7 +245,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 style={{
                   width: "100%",
                   padding: "8px",
-                  background: "rgba(255,255,255,0.1)",
+                  background: color.hairlineStrong,
                   border: "1px solid rgba(255,255,255,0.2)",
                   borderRadius: "4px",
                   color: "white",
@@ -265,7 +267,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 style={{
                   width: "100%",
                   padding: "8px",
-                  background: "rgba(255,255,255,0.1)",
+                  background: color.hairlineStrong,
                   border: "1px solid rgba(255,255,255,0.2)",
                   borderRadius: "4px",
                   color: "white",
@@ -285,7 +287,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 style={{
                   width: "100%",
                   padding: "8px",
-                  background: "rgba(255,255,255,0.1)",
+                  background: color.hairlineStrong,
                   border: "1px solid rgba(255,255,255,0.2)",
                   borderRadius: "4px",
                   color: "white",
@@ -351,7 +353,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 style={{
                   width: "100%",
                   padding: "8px",
-                  background: "rgba(255,255,255,0.1)",
+                  background: color.hairlineStrong,
                   border: "1px solid rgba(255,255,255,0.2)",
                   borderRadius: "4px",
                   color: "white",
@@ -372,7 +374,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               <div
                 style={{
                   fontSize: "0.75rem",
-                  color: "rgba(255,255,255,0.5)",
+                  color: color.fg3,
                   marginTop: "4px",
                 }}>
                 透明 + 模糊会保留玻璃感背景，适合字幕覆盖在复杂画面上
@@ -412,6 +414,31 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             确定
           </button>
         </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        className="glass-card"
+        style={{
+          width: "100%",
+          minWidth: 0,
+          margin: "70px 1.2rem 1.2rem",
+          padding: 0,
+          alignItems: "stretch",
+        }}>
+        <div className="settings-dialog settings-dialog-embedded">
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-overlay" onClick={onClose}>
+      <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
+        {content}
       </div>
     </div>
   );

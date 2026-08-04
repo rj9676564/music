@@ -1,12 +1,24 @@
 import React from "react";
 import { CloseIcon, RadioIcon } from "../Icons";
+import { ArtworkTile } from "../ui/ArtworkTile";
+import { ListItemCard } from "../ui/ListItemCard";
+import { PanelHeader } from "../ui/PanelHeader";
+import { Spinner } from "../ui/Spinner";
+import { color, fontSize } from "../../styles/tokens";
+
+interface Channel {
+  id: string;
+  name: string;
+  description?: string;
+  image_url?: string;
+}
 
 interface ChannelsPanelProps {
   loadingChannels: boolean;
-  channels: any[];
-  currentChannel: any;
+  channels: Channel[];
+  currentChannel: Channel | null;
   loadingPodcast: boolean;
-  onFetchChannel: (channel: any) => void;
+  onFetchChannel: (channel: Channel) => void;
   onClose: () => void;
 }
 
@@ -20,127 +32,74 @@ export const ChannelsPanel: React.FC<ChannelsPanelProps> = ({
 }) => {
   return (
     <div
-      className="glass-card"
+      className="browser-panel"
       style={{
-        width: "330px",
-        height: "100%",
+        width: "100%",
         display: "flex",
         flexDirection: "column",
-        padding: "20px 0 20px 20px", // 右侧不留 padding
         animation: "fadeIn 0.3s ease",
         flexShrink: 0,
+        flex: 1,
+        borderRadius: "18px",
       }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          marginBottom: "20px",
-          justifyContent: "space-between",
-          paddingRight: "20px", // 标题区补上
-        }}>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "1.2rem",
-            color: "white",
-            fontWeight: 600,
-          }}>
-          在线频道
-        </h2>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            color: "rgba(255,255,255,0.7)",
-            cursor: "pointer",
-            padding: "5px",
-          }}>
-          <CloseIcon />
-        </button>
-      </div>
+      <PanelHeader
+        eyebrow="Browse"
+        title="在线频道"
+        right={
+          <button
+            onClick={onClose}
+            className="browser-close-btn"
+            style={{
+              background: "none",
+              border: "none",
+              color: color.fg2,
+              cursor: "pointer",
+              padding: "5px",
+            }}>
+            <CloseIcon />
+          </button>
+        }
+      />
 
       <div
-        className="custom-scrollbar"
-        style={{ flex: 1, overflowY: "auto", paddingRight: "8px",width: "100%" }}>
-        {/* Channels List Content */}
+        className="custom-scrollbar browser-list"
+        style={{ flex: 1, overflowY: "auto", width: "100%" }}>
         {loadingChannels ? (
-          <div style={{ padding: "20px", textAlign: "center", color: "#888" }}>
+          <div style={{ padding: "20px", textAlign: "center", color: color.fg3 }}>
             加载频道列表...
           </div>
         ) : (
-          channels.map((channel: any) => (
-            <div
+          channels.map((channel) => (
+            <ListItemCard
               key={channel.id}
-              onClick={() => onFetchChannel(channel)}
-              style={{
-                padding: "16px",
-                background:
-                  currentChannel?.id === channel.id
-                    ? "rgba(255, 255, 255, 0.15)"
-                    : "rgba(255, 255, 255, 0.05)",
-                borderRadius: "12px",
-                border:
-                  currentChannel?.id === channel.id
-                    ? "1px solid rgba(255, 255, 255, 0.3)"
-                    : "1px solid rgba(255, 255, 255, 0.1)",
-                cursor: "pointer",
-                marginBottom: "12px",
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                minHeight: "70px",
-              }}>
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "8px",
-                  background:
-                    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  flexShrink: 0,
-                  position: "relative",
-                }}>
-                <RadioIcon />
-
-                {/* Loading Overlay */}
-                {loadingPodcast && currentChannel?.id === channel.id && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
-                      background: "rgba(0,0,0,0.3)",
-                      borderRadius: "8px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}>
+              selected={currentChannel?.id === channel.id}
+              onClick={() => onFetchChannel(channel)}>
+              <ArtworkTile
+                src={channel.image_url}
+                alt={channel.name}
+                fallback={<RadioIcon />}
+                overlay={
+                  loadingPodcast && currentChannel?.id === channel.id ? (
                     <div
-                      className="spinner"
                       style={{
-                        width: "24px",
-                        height: "24px",
-                        border: "3px solid rgba(255,255,255,0.1)",
-                        borderTopColor: "#f5576c", // Pink
-                        borderLeftColor: "#f093fb", // Purple
-                        borderRadius: "50%",
-                        animation: "spin 0.8s linear infinite",
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-              <div style={{ flex: 1 }}>
+                        position: "absolute",
+                        inset: 0,
+                        background: color.scrim,
+                        borderRadius: "inherit",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: color.accent,
+                      }}>
+                      <Spinner size={24} />
+                    </div>
+                  ) : undefined
+                }
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: "0.95rem",
+                    fontSize: fontSize.xl,
                     fontWeight: 600,
                     color: "#fff",
                     marginBottom: "4px",
@@ -150,8 +109,8 @@ export const ChannelsPanel: React.FC<ChannelsPanelProps> = ({
                 </div>
                 <div
                   style={{
-                    fontSize: "0.75rem",
-                    color: "rgba(255,255,255,0.5)",
+                    fontSize: "0.82rem",
+                    color: color.fg3,
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: "vertical",
@@ -160,7 +119,7 @@ export const ChannelsPanel: React.FC<ChannelsPanelProps> = ({
                   {channel.description}
                 </div>
               </div>
-            </div>
+            </ListItemCard>
           ))
         )}
       </div>

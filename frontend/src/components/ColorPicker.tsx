@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { color } from "../styles/tokens";
 
 export const ColorPicker = memo(
   ({
@@ -46,13 +47,13 @@ export const ColorPicker = memo(
             }}
             onMouseEnter={(e) => {
               if (value !== c) {
-                e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)";
+                e.currentTarget.style.borderColor = color.fg4;
                 e.currentTarget.style.transform = "scale(1.1)";
               }
             }}
             onMouseLeave={(e) => {
               if (value !== c) {
-                e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
+                e.currentTarget.style.borderColor = color.fg5;
                 e.currentTarget.style.transform = "scale(1)";
               }
             }}>
@@ -64,7 +65,7 @@ export const ColorPicker = memo(
                   left: 0,
                   width: "100%",
                   height: "2px",
-                  backgroundColor: "#f5576c",
+                  backgroundColor: color.accent,
                   transform: "rotate(45deg)",
                 }}
               />

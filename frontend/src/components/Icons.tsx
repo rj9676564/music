@@ -10,8 +10,12 @@ export const SettingsIcon = ({ className }: { className?: string }) => (
     strokeLinecap="round"
     strokeLinejoin="round"
     style={{ display: "block" }}>
-    <circle cx="12" cy="12" r="3"></circle>
-    <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"></path>
+    <line x1="4" y1="6" x2="20" y2="6"></line>
+    <line x1="4" y1="12" x2="20" y2="12"></line>
+    <line x1="4" y1="18" x2="20" y2="18"></line>
+    <circle cx="9" cy="6" r="2"></circle>
+    <circle cx="15" cy="12" r="2"></circle>
+    <circle cx="11" cy="18" r="2"></circle>
   </svg>
 );
 
@@ -62,8 +66,10 @@ export const LockIcon = ({ className }: { className?: string }) => (
     strokeLinecap="round"
     strokeLinejoin="round"
     style={{ display: "block" }}>
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+    <path d="M12 21v-6"></path>
+    <path d="M8 8.5h8l-1.6 6.2H9.6L8 8.5z"></path>
+    <path d="M12 3.5l4 5"></path>
+    <path d="M12 3.5l-4 5"></path>
   </svg>
 );
 
@@ -79,8 +85,30 @@ export const UnlockIcon = ({ className }: { className?: string }) => (
     strokeLinecap="round"
     strokeLinejoin="round"
     style={{ display: "block" }}>
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+    <path d="M12 21v-6"></path>
+    <path d="M8 8.5h8l-1.6 6.2H9.6L8 8.5z"></path>
+    <path d="M12 3.5l4 5"></path>
+    <path d="M12 3.5l-4 5"></path>
+    <path d="M5 5l14 14"></path>
+  </svg>
+);
+
+export const RepeatIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ display: "block" }}>
+    <path d="M17 1l4 4-4 4"></path>
+    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+    <path d="M7 23l-4-4 4-4"></path>
+    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
   </svg>
 );
 

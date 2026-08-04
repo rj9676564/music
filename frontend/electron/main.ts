@@ -8,6 +8,8 @@ import FormData from 'form-data'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const boundsPath = path.join(app.getPath('userData'), 'lyric-bounds.json')
 let globalSettings = { apiUrl: 'http://localhost:8080' }
+const MAIN_WINDOW_WIDTH = 760
+const MAIN_WINDOW_HEIGHT = 1080
 
 function saveBounds(bounds: any) {
   try {
@@ -67,8 +69,9 @@ let lyricWin: BrowserWindow | null
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'icon.png'),
-    width: 530,
-    height: 820,
+    width: MAIN_WINDOW_WIDTH,
+    height: MAIN_WINDOW_HEIGHT,
+    useContentSize: true,
     title: 'Molten Music',
     titleBarStyle: 'hidden',
     webPreferences: {
@@ -564,8 +567,8 @@ ipcMain.handle('transcribe-audio', async (_event, audioPath: string, guid?: stri
 ipcMain.on('set-window-size', (_event, width: number) => {
   if (win && !win.isDestroyed()) {
      const [currentW, currentH] = win.getSize()
-     if (currentW !== width) {
-        win.setSize(width, 820, true)
+     if (currentW !== width || currentH !== MAIN_WINDOW_HEIGHT) {
+        win.setSize(width, MAIN_WINDOW_HEIGHT, true)
      }
   }
 })

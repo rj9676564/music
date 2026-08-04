@@ -40,7 +40,10 @@ export const ActiveKaraokeLine = memo(
     color: string;
     fontSize: number;
   }) => {
-    const parts = useMemo(() => text.split(/(\s+)/), [text]);
+    const parts = useMemo(
+      () => (/\s/.test(text) ? text.split(/(\s+)/) : Array.from(text)),
+      [text],
+    );
     const totalChars = text.length || 1;
     let charOffset = 0;
     return (
@@ -54,6 +57,21 @@ export const ActiveKaraokeLine = memo(
         }}>
         {parts.map((word, wordIdx) => {
           const wordLen = word.length;
+          if (!wordLen) return null;
+
+          if (/^\s+$/.test(word)) {
+            charOffset += wordLen;
+            return (
+              <span
+                key={wordIdx}
+                style={{
+                  whiteSpace: "pre-wrap",
+                }}>
+                {word}
+              </span>
+            );
+          }
+
           const wordEndProgress = (charOffset + wordLen) / totalChars;
           const isWordFocused =
             progress >= charOffset / totalChars && progress < wordEndProgress;
@@ -61,7 +79,7 @@ export const ActiveKaraokeLine = memo(
             <span
               key={wordIdx}
               style={{
-                whiteSpace: "nowrap",
+                whiteSpace: "normal",
                 display: "inline-block",
                 transform: isWordFocused ? "scale(1.05)" : "scale(1)",
                 color: progress >= wordEndProgress ? activeColor : "inherit",
