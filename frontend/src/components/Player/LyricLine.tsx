@@ -1,4 +1,5 @@
 import React, { memo, useMemo } from "react";
+import { TRANSLATION_FONT_SCALE } from "../../utils/lyricTranslation";
 
 const LINE_STYLE: React.CSSProperties = {
   lineHeight: "1.6",
@@ -17,7 +18,7 @@ const TranslationLine = memo(
     <div
       className="lyric-translation"
       style={{
-        fontSize: `${fontSize * 0.72}px`,
+        fontSize: `${fontSize * TRANSLATION_FONT_SCALE}px`,
         fontWeight: 400,
         opacity: active ? 0.85 : 0.6,
       }}>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, memo } from "react";
+import { TRANSLATION_FONT_SCALE } from "./utils/lyricTranslation";
 
 // Optimized Word Component
 const KaraokeWord = memo(
@@ -360,7 +361,7 @@ const LyricApp = () => {
             <div
               style={{
                 whiteSpace: "nowrap",
-                fontSize: `${settings.fontSize * 0.62}px`,
+                fontSize: `${settings.fontSize * TRANSLATION_FONT_SCALE}px`,
                 fontWeight: 500,
                 marginTop: "6px",
               }}>
@@ -447,7 +448,7 @@ const LyricApp = () => {
               textAlign: "center",
               width: "100%",
               marginTop: "6px",
-              fontSize: `${settings.fontSize * 0.62}px`,
+              fontSize: `${settings.fontSize * TRANSLATION_FONT_SCALE}px`,
               fontWeight: 500,
               color: settings.color,
               opacity: 0.75,

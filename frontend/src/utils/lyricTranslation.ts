@@ -1,6 +1,9 @@
 import { parseSrt } from "./lrcParser";
 import type { LyricLine } from "./lrcParser";
 
+/** 译文相对原文的字号比例。主窗口歌词列表与桌面歌词悬浮窗共用。 */
+export const TRANSLATION_FONT_SCALE = 0.72;
+
 export type MergeStrategy = "timestamp" | "index" | "none";
 
 export interface MergeResult {
