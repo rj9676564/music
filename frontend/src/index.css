@@ -361,9 +361,26 @@ body {
 }
 
 .sidebar-rail .tool-btn.active {
-  background: var(--hairline-strong);
-  border-color: var(--hairline);
-  color: #fff;
+  background: var(--c-accent-bg);
+  border-color: var(--c-accent-border);
+  color: var(--c-accent);
+}
+
+/* 选中项左侧的强调条：仅靠背景深浅区分时，和 hover 态几乎看不出差别 */
+.sidebar-rail .tool-btn.active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--c-accent);
+}
+
+.sidebar-rail .tool-btn {
+  position: relative;
 }
 
 .sidebar-rail .tool-btn.tool-btn-secondary {

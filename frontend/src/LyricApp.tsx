@@ -193,13 +193,21 @@ const LyricApp = () => {
   const isTransparentBlur = backgroundEffect === "transparentBlur";
 
   const effectiveBg = useMemo(() => {
+    const chosen = settings.backgroundColor;
+    // 用户把背景色设成全透明时，悬停/毛玻璃态需要一个可见的兜底，
+    // 否则这两种模式下窗口完全看不见
+    const isFullyTransparent =
+      !chosen || chosen.replace(/\s/g, "") === "rgba(0,0,0,0)";
+
     if (backgroundEffect === "transparent") {
-      return isHovered ? "rgba(0, 0, 0, 0.5)" : "transparent";
+      if (!isHovered) return "transparent";
+      return isFullyTransparent ? "rgba(0, 0, 0, 0.5)" : chosen;
     }
     if (backgroundEffect === "transparentBlur") {
-      return isHovered ? "rgba(0, 0, 0, 0.28)" : "rgba(0, 0, 0, 0.18)";
+      // 毛玻璃：颜色仍由用户决定，效果只负责模糊
+      return isFullyTransparent ? "rgba(0, 0, 0, 0.18)" : chosen;
     }
-    return settings.backgroundColor;
+    return chosen;
   }, [backgroundEffect, isHovered, settings.backgroundColor]);
 
   const effectiveBlur = useMemo(() => {
