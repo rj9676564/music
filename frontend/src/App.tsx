@@ -209,9 +209,9 @@ function App() {
       const path = overrides?.audioPath ?? playerState.audioPath;
       if (!path) return;
 
-      // srtContent / translation 各自可达数十 KB，写进 localStorage 会在每次
-      // 进度保存时反复序列化整份字幕，所以只持久化元数据，正文重新播放时再取
-      const { srtContent: _srt, translation: _tr, ...persistableMusicInfo } =
+      // translation 可达数十 KB，且重启后能由轮询重新取回，不进 localStorage。
+      // srtContent 必须保留 —— 它是重启后恢复播客歌词的唯一来源（见 restoreTrack）。
+      const { translation: _tr, ...persistableMusicInfo } =
         overrides?.musicInfo ?? playerState.musicInfo;
 
       const playbackState: PersistedPlaybackState = {
