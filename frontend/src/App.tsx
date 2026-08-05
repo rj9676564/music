@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import axios from "axios";
 import { parseLrc, parseSrt } from "./utils/lrcParser";
+import { mergeTranslation } from "./utils/lyricTranslation";
 import type { LyricLine } from "./utils/lrcParser";
 import { useSettingsStore } from "./store/settingsStore";
 import { usePlayerStore } from "./store/playerStore";
@@ -208,10 +209,15 @@ function App() {
       const path = overrides?.audioPath ?? playerState.audioPath;
       if (!path) return;
 
+      // srtContent / translation 各自可达数十 KB，写进 localStorage 会在每次
+      // 进度保存时反复序列化整份字幕，所以只持久化元数据，正文重新播放时再取
+      const { srtContent: _srt, translation: _tr, ...persistableMusicInfo } =
+        overrides?.musicInfo ?? playerState.musicInfo;
+
       const playbackState: PersistedPlaybackState = {
         version: 1,
         audioPath: path,
-        musicInfo: overrides?.musicInfo ?? playerState.musicInfo,
+        musicInfo: persistableMusicInfo,
         currentChannel:
           overrides?.currentChannel !== undefined
             ? overrides.currentChannel
@@ -432,6 +438,9 @@ function App() {
         ) {
           window.ipcRenderer?.send("update-lyric", {
             text: currentLyrics[index].text,
+            translation: settings.showTranslation
+              ? currentLyrics[index].translation
+              : undefined,
             progress,
           });
           lastIpcUpdateRef.current = { index, progress };
@@ -898,12 +907,23 @@ function App() {
   useEffect(() => {
     const currentGuid = musicInfo.guid;
 
-    if (!currentGuid || musicInfo.srtContent || !currentChannel) {
+    // 等字幕，或者字幕已就绪但译文还在路上时都要继续轮询。
+    // 旧写法只要有 srtContent 就直接返回，导致最常见的情况
+    // （字幕早就有了、翻译还在跑）永远观察不到 translation_status 变化。
+    const waitingForSrt = !musicInfo.srtContent;
+    const waitingForTranslation =
+      !!musicInfo.srtContent &&
+      !musicInfo.translation &&
+      musicInfo.translationStatus !== "failed";
+
+    if (!currentGuid || !currentChannel || (!waitingForSrt && !waitingForTranslation)) {
       return;
     }
 
     console.log(
-      "🔄 Starting transcription status checker for:",
+      waitingForSrt
+        ? "🔄 Waiting for transcription:"
+        : "🔄 Waiting for translation:",
       musicInfo.name,
     );
 
@@ -925,16 +945,47 @@ function App() {
             ),
           );
 
-          if (updatedEpisode.srt_content && !musicInfo.srtContent) {
-            console.log("✅ Transcription completed! Loading subtitles...");
-            resetSentenceLoop();
-            setLyrics(parseSrt(updatedEpisode.srt_content));
-            
-            // 更新 musicInfo
-            setAudio(audioPath || "", {
-              ...musicInfo,
-              srtContent: updatedEpisode.srt_content,
-            });
+          const srtArrived = updatedEpisode.srt_content && !musicInfo.srtContent;
+          const translationArrived =
+            updatedEpisode.translation && !musicInfo.translation;
+
+          if (srtArrived || translationArrived) {
+            console.log(
+              srtArrived
+                ? "✅ Transcription completed! Loading subtitles..."
+                : "✅ Translation completed! Loading bilingual lyrics...",
+            );
+
+            const srt = updatedEpisode.srt_content || musicInfo.srtContent || "";
+            const merged = mergeTranslation(
+              parseSrt(srt),
+              updatedEpisode.translation || "",
+            );
+
+            // 译文到达时不要重置整句复听：用户可能正在复听某一句
+            if (srtArrived) resetSentenceLoop();
+            setLyrics(merged.lines);
+
+            // 这里不能用 setAudio —— 它会把 currentTime 归零、isPlaying 置 false，
+            // 而译文往往在用户听到一半时才到达。只补丁 musicInfo。
+            usePlayerStore.setState((state) => ({
+              musicInfo: {
+                ...state.musicInfo,
+                srtContent: srt,
+                translation: updatedEpisode.translation,
+                translationLang: updatedEpisode.translation_lang,
+                translationStatus: updatedEpisode.translation_status,
+              },
+            }));
+          } else if (
+            updatedEpisode.translation_status !== musicInfo.translationStatus
+          ) {
+            usePlayerStore.setState((state) => ({
+              musicInfo: {
+                ...state.musicInfo,
+                translationStatus: updatedEpisode.translation_status,
+              },
+            }));
           }
         }
       } catch (error) {
@@ -1219,12 +1270,22 @@ function App() {
         guid: episode.guid,
         summary: episode.summary,
         srtContent: episode.srt_content,
+        translation: episode.translation,
+        translationLang: episode.translation_lang,
+        translationStatus: episode.translation_status,
       });
 
       // Load lyrics if available in episode data
       if (episode.srt_content) {
         console.log("Loading SRT lyrics from episode data");
-        setLyrics(parseSrt(episode.srt_content));
+        const merged = mergeTranslation(
+          parseSrt(episode.srt_content),
+          episode.translation || "",
+        );
+        console.log(
+          `Lyrics: ${merged.total} lines, ${merged.matched} translated (${merged.strategy})`,
+        );
+        setLyrics(merged.lines);
 
         // 存量节目在转录时还没有翻译功能，播放时按需补翻（后台异步）。
         // 服务端对同一集有并发保护，重复点播放不会重复消耗 token。

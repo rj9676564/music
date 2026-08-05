@@ -2,6 +2,8 @@ export interface LyricLine {
   time: number
   endTime?: number
   text: string
+  /** 译文，由 mergeTranslation 填入；卡拉OK 进度只按 text 计算 */
+  translation?: string
 }
 
 // 解析 SRT 时间格式 (支持逗号和点分隔的毫秒)

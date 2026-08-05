@@ -300,6 +300,13 @@ body {
   word-break: break-word;
 }
 
+.lyric-translation {
+  margin-top: 3px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: inherit;
+}
+
 .lyric-line.active {
   color: #fff;
   font-weight: 700;

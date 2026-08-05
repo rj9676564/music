@@ -7,21 +7,44 @@ const LINE_STYLE: React.CSSProperties = {
   fontSize: "inherit",
 };
 
+/**
+ * 译文子行。必须渲染在歌词行元素 *内部* —— App.tsx 的 scrollToActive 用
+ * list.children[activeIndex] 定位，译文若成为兄弟节点会让所有下标错位，
+ * 同时破坏滚动、整句复听和高亮。
+ */
+const TranslationLine = memo(
+  ({ text, fontSize, active }: { text: string; fontSize: number; active: boolean }) => (
+    <div
+      className="lyric-translation"
+      style={{
+        fontSize: `${fontSize * 0.72}px`,
+        fontWeight: 400,
+        opacity: active ? 0.85 : 0.6,
+      }}>
+      {text}
+    </div>
+  ),
+);
+
 export const StaticLine = memo(
   ({
     text,
+    translation,
     color,
     fontSize,
   }: {
     text: string;
+    translation?: string;
     color: string;
     fontSize: number;
   }) => (
     <div
       className="lyric-line"
       style={{ ...LINE_STYLE, color, fontSize: `${fontSize * 0.8}px` }}>
-      {" "}
-      {text}{" "}
+      {text}
+      {translation && (
+        <TranslationLine text={translation} fontSize={fontSize * 0.8} active={false} />
+      )}
     </div>
   ),
 );
@@ -29,12 +52,14 @@ export const StaticLine = memo(
 export const ActiveKaraokeLine = memo(
   ({
     text,
+    translation,
     progress,
     activeColor,
     color,
     fontSize,
   }: {
     text: string;
+    translation?: string;
     progress: number;
     activeColor: string;
     color: string;
@@ -44,6 +69,7 @@ export const ActiveKaraokeLine = memo(
       () => (/\s/.test(text) ? text.split(/(\s+)/) : Array.from(text)),
       [text],
     );
+    // 进度分母只看原文；译文是独立节点，不参与卡拉OK 计算
     const totalChars = text.length || 1;
     let charOffset = 0;
     return (
@@ -126,6 +152,9 @@ export const ActiveKaraokeLine = memo(
           charOffset += wordLen;
           return element;
         })}
+        {translation && (
+          <TranslationLine text={translation} fontSize={fontSize} active />
+        )}
       </div>
     );
   },

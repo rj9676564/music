@@ -111,6 +111,26 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 循环播放
               </label>
             </div>
+            <div className="setting-item setting-item-checkbox">
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                }}>
+                <input
+                  type="checkbox"
+                  checked={settings.showTranslation}
+                  onChange={(e) =>
+                    settings.updateSettings({
+                      showTranslation: e.target.checked,
+                    })
+                  }
+                />
+                显示译文
+              </label>
+            </div>
             <div className="setting-item">
               <label>
                 歌词时间偏移: {settings.lyricOffset > 0 ? "+" : ""}

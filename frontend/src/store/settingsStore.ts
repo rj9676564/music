@@ -16,6 +16,7 @@ interface PlayerSettings {
   llmApiKey: string;
   llmApiBase: string;
   llmModel: string;
+  showTranslation: boolean;
 }
 
 interface SettingsState extends PlayerSettings {
@@ -39,6 +40,7 @@ export const useSettingsStore = create<SettingsState>()(
       llmApiKey: '',
       llmApiBase: 'https://api.moonshot.cn/v1',
       llmModel: 'moonshot-v1-8k',
+      showTranslation: true,
       updateSettings: (newSettings) => {
         if (newSettings.apiUrl) {
           console.log('🌐 API URL Updated to:', newSettings.apiUrl);

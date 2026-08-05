@@ -367,6 +367,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 key={index}
                 fontSize={17}
                 text={line.text}
+                translation={settings.showTranslation ? line.translation : undefined}
                 progress={currentProgress}
                 activeColor={settings.activeColor}
                 color={settings.color}
@@ -376,6 +377,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 key={index}
                 fontSize={16}
                 text={line.text}
+                translation={settings.showTranslation ? line.translation : undefined}
                 color={
                   index < activeIndex ? settings.activeColor : settings.color
                 }

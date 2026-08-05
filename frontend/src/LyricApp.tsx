@@ -70,7 +70,11 @@ const KaraokeWord = memo(
 );
 
 const LyricApp = () => {
-  const [lyricData, setLyricData] = useState({
+  const [lyricData, setLyricData] = useState<{
+    text: string;
+    translation?: string;
+    progress: number;
+  }>({
     text: "等待播放...",
     progress: 0,
   });
@@ -98,6 +102,7 @@ const LyricApp = () => {
           return prev.text === data ? prev : { text: data, progress: 0 };
         if (
           prev.text === data.text &&
+          prev.translation === data.translation &&
           Math.abs(prev.progress - data.progress) < 0.005
         )
           return prev;
@@ -175,7 +180,7 @@ const LyricApp = () => {
     if (boxRef.current) obs.observe(boxRef.current);
     if (measureRef.current) obs.observe(measureRef.current);
     return () => obs.disconnect();
-  }, [lyricData.text, settings.backgroundEffect, settings.fontSize]);
+  }, [lyricData.text, lyricData.translation, settings.backgroundEffect, settings.fontSize]);
 
   const lines = useMemo(() => lyricData.text.split("\n"), [lyricData.text]);
 
@@ -343,6 +348,17 @@ const LyricApp = () => {
               {line}
             </div>
           ))}
+          {lyricData.translation && (
+            <div
+              style={{
+                whiteSpace: "nowrap",
+                fontSize: `${settings.fontSize * 0.62}px`,
+                fontWeight: 500,
+                marginTop: "6px",
+              }}>
+              {lyricData.translation}
+            </div>
+          )}
         </div>
         <div
           ref={boxRef}
@@ -417,6 +433,25 @@ const LyricApp = () => {
             </div>
           );
         })}
+        {lyricData.translation && (
+          <div
+            style={{
+              textAlign: "center",
+              width: "100%",
+              marginTop: "6px",
+              fontSize: `${settings.fontSize * 0.62}px`,
+              fontWeight: 500,
+              color: settings.color,
+              opacity: 0.75,
+              textShadow: lyricTextShadow,
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+            } as React.CSSProperties}>
+            {lyricData.translation}
+          </div>
+        )}
         </div>
       </div>
     </div>

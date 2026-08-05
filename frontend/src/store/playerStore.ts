@@ -8,6 +8,10 @@ interface MusicInfo {
   guid?: string;
   summary?: string;
   srtContent?: string;
+  /** 译文 SRT。体积很大，持久化到 localStorage 前必须剔除 */
+  translation?: string;
+  translationLang?: string;
+  translationStatus?: string;
 }
 
 interface PlayerState {
