@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -388,32 +389,17 @@ func main() {
 				return apis.NewBadRequestError("srtContent is required", nil)
 			}
 
-			cfg, err := resolveLLMConfig("", "", "")
-			if err != nil {
-				return apis.NewBadRequestError("Translate failed: server LLM key not configured", err)
-			}
-
-			translation, err := translateSRT(srtContent, targetLang, cfg)
-			if err != nil {
-				if record != nil {
-					record.Set("translation_status", "failed")
-					app.Save(record)
-				}
+			// 翻译一集要几十次 LLM 调用、耗时数分钟，同步返回必然被反向代理
+			// 判超时（nginx 默认 60s）。这里只登记任务并立刻返回 202，
+			// 客户端轮询 translation_status 获取结果。
+			if err := startTranslation(app, data.GUID, srtContent, targetLang); err != nil {
 				return apis.NewBadRequestError("Translate failed", err)
 			}
 
-			// 译文是全站共享数据，写回后所有客户端复用
-			if record != nil {
-				record.Set("translation", translation)
-				record.Set("translation_lang", targetLang)
-				record.Set("translation_status", "completed")
-				app.Save(record)
-			}
-
-			return e.JSON(http.StatusOK, map[string]interface{}{
-				"success":     true,
-				"translation": translation,
-				"targetLang":  targetLang,
+			return e.JSON(http.StatusAccepted, map[string]interface{}{
+				"success":    true,
+				"status":     "pending",
+				"targetLang": targetLang,
 			})
 		})
 
@@ -495,59 +481,79 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 	return callLLMChat(cfg, "", "Summary: "+text, 60*time.Second)
 }
 
-// autoTranslateEpisode 在后台把刚保存的字幕翻译成目标语言，失败只记录日志不影响转录流程
-func autoTranslateEpisode(app *pocketbase.PocketBase, guid, srtContent string) {
-	if !autoTranslateEnabled() {
-		return
-	}
+// translateInflight 保证同一集同时只有一个翻译任务，
+// 避免用户反复点播放（或自动翻译与手动触发撞车）时重复烧 token
+var translateInflight sync.Map
 
+// startTranslation 登记一集的后台翻译任务并立即返回。
+// 已在翻译中、或已有同语言译文时直接跳过，不视为错误。
+func startTranslation(app *pocketbase.PocketBase, guid, srtContent, targetLang string) error {
 	cfg, err := resolveLLMConfig("", "", "")
 	if err != nil {
-		log.Printf("⏭️ Auto translate skipped (%s): %v", guid, err)
-		return
+		return err
+	}
+	if strings.TrimSpace(guid) == "" {
+		return fmt.Errorf("guid is required")
+	}
+
+	if _, running := translateInflight.LoadOrStore(guid, struct{}{}); running {
+		log.Printf("⏭️ Translate already running for %s", guid)
+		return nil
 	}
 
 	record, err := app.FindFirstRecordByData("episodes", "guid", guid)
 	if err != nil {
-		log.Printf("⏭️ Auto translate skipped: episode %s not found", guid)
-		return
-	}
-	if record.GetString("translation") != "" {
-		return
+		translateInflight.Delete(guid)
+		return fmt.Errorf("episode %s not found", guid)
 	}
 
-	targetLang := defaultTranslateLang()
 	record.Set("translation_status", "pending")
 	record.Set("translation_lang", targetLang)
 	if err := app.Save(record); err != nil {
-		log.Printf("❌ Auto translate failed to mark pending (%s): %v", guid, err)
-		return
+		translateInflight.Delete(guid)
+		return err
 	}
 
-	log.Printf("🌐 Auto translating episode %s -> %s", guid, targetLang)
-	translation, err := translateSRT(srtContent, targetLang, cfg)
+	go func() {
+		defer translateInflight.Delete(guid)
 
-	// 重新拉取记录，避免覆盖翻译期间的其他写入
-	record, findErr := app.FindFirstRecordByData("episodes", "guid", guid)
-	if findErr != nil {
-		log.Printf("❌ Auto translate: episode %s disappeared", guid)
+		log.Printf("🌐 Translating episode %s -> %s", guid, targetLang)
+		translation, translateErr := translateSRT(srtContent, targetLang, cfg)
+
+		// 重新拉取记录，避免覆盖翻译期间的其他写入
+		rec, findErr := app.FindFirstRecordByData("episodes", "guid", guid)
+		if findErr != nil {
+			log.Printf("❌ Translate: episode %s disappeared", guid)
+			return
+		}
+
+		if translateErr != nil {
+			log.Printf("❌ Translate failed (%s): %v", guid, translateErr)
+			rec.Set("translation_status", "failed")
+			app.Save(rec)
+			return
+		}
+
+		rec.Set("translation", translation)
+		rec.Set("translation_status", "completed")
+		if err := app.Save(rec); err != nil {
+			log.Printf("❌ Translate failed to save (%s): %v", guid, err)
+			return
+		}
+		log.Printf("✅ Translate completed for %s", guid)
+	}()
+
+	return nil
+}
+
+// autoTranslateEpisode 在转录完成后自动翻译，失败只记录日志不影响转录流程
+func autoTranslateEpisode(app *pocketbase.PocketBase, guid, srtContent string) {
+	if !autoTranslateEnabled() {
 		return
 	}
-
-	if err != nil {
-		log.Printf("❌ Auto translate failed (%s): %v", guid, err)
-		record.Set("translation_status", "failed")
-		app.Save(record)
-		return
+	if err := startTranslation(app, guid, srtContent, defaultTranslateLang()); err != nil {
+		log.Printf("⏭️ Auto translate skipped (%s): %v", guid, err)
 	}
-
-	record.Set("translation", translation)
-	record.Set("translation_status", "completed")
-	if err := app.Save(record); err != nil {
-		log.Printf("❌ Auto translate failed to save (%s): %v", guid, err)
-		return
-	}
-	log.Printf("✅ Auto translate completed for %s", guid)
 }
 
 func isDynamicInterfaceEnabled(status string) bool {

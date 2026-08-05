@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -64,7 +65,8 @@ func callLLMChat(cfg llmConfig, systemPrompt, userPrompt string, timeout time.Du
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", strings.TrimSuffix(cfg.APIBase, "/")+"/chat/completions", bytes.NewBuffer(jsonData))
+	endpoint := strings.TrimSuffix(cfg.APIBase, "/") + "/chat/completions"
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
@@ -78,6 +80,19 @@ func callLLMChat(cfg llmConfig, systemPrompt, userPrompt string, timeout time.Du
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("LLM %s: reading response: %w", endpoint, err)
+	}
+
+	// 非 JSON 响应（网关 HTML 错误页、404 页面等）在这里就要报清楚，
+	// 否则只会得到一句 "invalid character '<'"，看不出是哪个地址、什么状态码
+	if !bytes.HasPrefix(bytes.TrimSpace(body), []byte("{")) {
+		return "", fmt.Errorf(
+			"LLM %s returned non-JSON (status %d): %s — 检查 OPENAI_API_BASE 是否为 OpenAI 兼容地址（通常以 /v1 结尾）",
+			endpoint, resp.StatusCode, snippet(body))
+	}
+
 	var result struct {
 		Choices []struct {
 			Message struct {
@@ -88,8 +103,15 @@ func callLLMChat(cfg llmConfig, systemPrompt, userPrompt string, timeout time.Du
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("LLM %s: decoding response (status %d): %w: %s",
+			endpoint, resp.StatusCode, err, snippet(body))
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if result.Error.Message != "" {
+			return "", fmt.Errorf("LLM %s: status %d: %s", endpoint, resp.StatusCode, result.Error.Message)
+		}
+		return "", fmt.Errorf("LLM %s: status %d: %s", endpoint, resp.StatusCode, snippet(body))
 	}
 	if len(result.Choices) > 0 && strings.TrimSpace(result.Choices[0].Message.Content) != "" {
 		return result.Choices[0].Message.Content, nil
@@ -97,5 +119,17 @@ func callLLMChat(cfg llmConfig, systemPrompt, userPrompt string, timeout time.Du
 	if result.Error.Message != "" {
 		return "", fmt.Errorf("LLM error: %s", result.Error.Message)
 	}
-	return "", fmt.Errorf("LLM error: empty response (status %d)", resp.StatusCode)
+	return "", fmt.Errorf("LLM %s: empty response (status %d): %s", endpoint, resp.StatusCode, snippet(body))
+}
+
+// snippet 截断响应体用于报错，避免把整页 HTML 打进日志
+func snippet(b []byte) string {
+	s := strings.Join(strings.Fields(string(b)), " ")
+	if len(s) > 200 {
+		s = s[:200] + "…"
+	}
+	if s == "" {
+		return "(empty body)"
+	}
+	return s
 }

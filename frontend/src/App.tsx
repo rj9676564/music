@@ -1225,6 +1225,29 @@ function App() {
       if (episode.srt_content) {
         console.log("Loading SRT lyrics from episode data");
         setLyrics(parseSrt(episode.srt_content));
+
+        // 存量节目在转录时还没有翻译功能，播放时按需补翻（后台异步）。
+        // 服务端对同一集有并发保护，重复点播放不会重复消耗 token。
+        const needsTranslation =
+          !episode.translation && episode.translation_status !== "pending";
+        if (episode.guid && needsTranslation) {
+          console.log("🌐 Requesting translation:", episode.title);
+          axios
+            .post(`${settings.apiUrl}/api/translate`, { guid: episode.guid })
+            .then(() => {
+              console.log("✅ Translation queued");
+              setPodcastEpisodes((prev) =>
+                prev.map((ep) =>
+                  ep.guid === episode.guid
+                    ? { ...ep, translation_status: "pending" }
+                    : ep,
+                ),
+              );
+            })
+            .catch((error: unknown) => {
+              console.error("❌ Failed to queue translation:", error);
+            });
+        }
       } else {
         setLyrics([]);
 
