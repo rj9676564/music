@@ -472,6 +472,9 @@ func syncChannel(app *pocketbase.PocketBase, channel *core.Record) {
 		record.Set("pub_date", item.PubDate)
 		record.Set("audio_url", item.AudioURL)
 		record.Set("image_url", item.ImageURL)
+		if item.Duration > 0 {
+			record.Set("duration", item.Duration)
+		}
 
 		app.Save(record)
 	}
@@ -826,6 +829,7 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.DateField{Name: "pub_date"})
 		c.Fields.Add(&core.URLField{Name: "audio_url"})
 		c.Fields.Add(&core.URLField{Name: "image_url"})
+		c.Fields.Add(&core.NumberField{Name: "duration"})
 		c.Fields.Add(&core.EditorField{Name: "srt_content"})
 		c.Fields.Add(&core.EditorField{Name: "summary"})
 		c.Fields.Add(&core.TextField{Name: "transcription_status"})
@@ -845,6 +849,10 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		changed := false
 		if episodes.Fields.GetByName("image_url") == nil {
 			episodes.Fields.Add(&core.URLField{Name: "image_url"})
+			changed = true
+		}
+		if episodes.Fields.GetByName("duration") == nil {
+			episodes.Fields.Add(&core.NumberField{Name: "duration"})
 			changed = true
 		}
 		if episodes.Fields.GetByName("translation") == nil {

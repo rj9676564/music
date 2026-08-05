@@ -11,6 +11,7 @@ interface Episode {
   guid?: string;
   title?: string;
   pubDate?: string;
+  duration?: number;
   image_url?: string;
   srt_content?: string;
   transcription_status?: string;
@@ -24,6 +25,17 @@ interface EpisodesPanelProps {
   onDownloadEpisode: (episode: Episode, e: React.MouseEvent) => void;
   onRequestTranscription?: (episode: Episode, e: React.MouseEvent) => void;
 }
+
+/** 秒 -> "1:02:03" / "13:20"，RSS 未提供时长时返回空 */
+const formatDuration = (seconds?: number) => {
+  if (!seconds || seconds <= 0) return "";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
+};
 
 const TRANSCRIPTION_LABELS: Record<string, { label: string; tone: BadgeTone }> = {
   pending: { label: "排队中", tone: "warning" },
@@ -120,6 +132,11 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
                   {episode.pubDate && (
                     <div style={{ fontSize: "0.82rem", color: color.fg3 }}>
                       {new Date(episode.pubDate).toLocaleDateString("zh-CN")}
+                    </div>
+                  )}
+                  {formatDuration(episode.duration) && (
+                    <div style={{ fontSize: "0.82rem", color: color.fg4 }}>
+                      {formatDuration(episode.duration)}
                     </div>
                   )}
                   {status && <Badge tone={status.tone}>{status.label}</Badge>}

@@ -104,3 +104,21 @@ func TestFetchFeedReturnsChannelMetadata(t *testing.T) {
 		t.Errorf("episode should fall back to channel art, got %q", episodes[0].ImageURL)
 	}
 }
+
+func TestParseDuration(t *testing.T) {
+	cases := map[string]int{
+		"397":         397,  // 纯秒数
+		"13:20":       800,  // MM:SS
+		"01:02:03":    3723, // HH:MM:SS
+		"1:00":        60,
+		"12.5":        12, // 小数截断
+		"":            0,
+		"unknown":     0,
+		"99:99:99:99": 0, // 超过 24 小时，判定为脏数据
+	}
+	for in, want := range cases {
+		if got := parseDuration(in); got != want {
+			t.Errorf("parseDuration(%q) = %d, want %d", in, got, want)
+		}
+	}
+}

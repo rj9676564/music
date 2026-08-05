@@ -2,6 +2,7 @@ package rss
 
 import (
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ type EpisodeData struct {
 	AudioURL    string
 	ImageURL    string
 	Tags        string
+	Duration    int // 秒；RSS 未提供或无法解析时为 0
 }
 
 // FetchEpisodes parses the RSS feed and returns a list of EpisodeData
@@ -75,6 +77,11 @@ func FetchFeed(rssURL string, limit int) (FeedInfo, []EpisodeData, error) {
 			audioURL = item.Enclosures[0].URL
 		}
 
+		duration := 0
+		if item.ITunesExt != nil {
+			duration = parseDuration(item.ITunesExt.Duration)
+		}
+
 		imageURL := ""
 		if item.Image != nil {
 			imageURL = item.Image.URL
@@ -94,9 +101,39 @@ func FetchFeed(rssURL string, limit int) (FeedInfo, []EpisodeData, error) {
 			AudioURL:    audioURL,
 			ImageURL:    imageURL,
 			Tags:        strings.Join(item.Categories, ","),
+			Duration:    duration,
 		})
 	}
 
 	log.Printf("✅ Parsed %d episodes from %s", len(episodes), rssURL)
 	return info, episodes, nil
+}
+
+// parseDuration 归一化 itunes:duration。该字段格式不统一，
+// 常见有纯秒数 "397"、"MM:SS"、"HH:MM:SS"，也可能带小数或为空。
+func parseDuration(raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+
+	parts := strings.Split(raw, ":")
+	total := 0
+	for _, part := range parts {
+		// 去掉 "12.5" 这类小数部分，秒级精度足够
+		if dot := strings.Index(part, "."); dot >= 0 {
+			part = part[:dot]
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || n < 0 {
+			return 0
+		}
+		total = total*60 + n
+	}
+
+	// 超过 24 小时基本可以断定是脏数据
+	if total > 24*3600 {
+		return 0
+	}
+	return total
 }
