@@ -209,10 +209,9 @@ function App() {
       const path = overrides?.audioPath ?? playerState.audioPath;
       if (!path) return;
 
-      // translation 可达数十 KB，且重启后能由轮询重新取回，不进 localStorage。
-      // srtContent 必须保留 —— 它是重启后恢复播客歌词的唯一来源（见 restoreTrack）。
-      const { translation: _tr, ...persistableMusicInfo } =
-        overrides?.musicInfo ?? playerState.musicInfo;
+      // srtContent 和 translation 都要持久化：restoreTrack 靠它们重建双语歌词。
+      // 体积上两者同量级（各几十 KB），而 srtContent 一直都是这么存的。
+      const persistableMusicInfo = overrides?.musicInfo ?? playerState.musicInfo;
 
       const playbackState: PersistedPlaybackState = {
         version: 1,
@@ -662,7 +661,14 @@ function App() {
             }
           }
         } else if (playback.musicInfo?.srtContent) {
-          setLyrics(parseSrt(playback.musicInfo.srtContent));
+          const merged = mergeTranslation(
+            parseSrt(playback.musicInfo.srtContent),
+            playback.musicInfo.translation || "",
+          );
+          console.log(
+            `[restore] lyrics ${merged.total}, translated ${merged.matched} (${merged.strategy})`,
+          );
+          setLyrics(merged.lines);
         } else {
           setLyrics([]);
         }
@@ -672,13 +678,21 @@ function App() {
         setCurrentChannel(playback.currentChannel || null);
         setAudio(playback.audioPath, playback.musicInfo);
         const savedPosition = localStorage.getItem(`pos-${playback.audioPath}`);
+        const fromState = Number(playback.currentTime) || 0;
+        const fromPosKey = savedPosition ? Number.parseFloat(savedPosition) : 0;
+        // 两个键记录的是同一条音轨的进度，取较大者：旧版本存在把 currentTime
+        // 覆盖成 0（或刚起播的极小值）的竞态，用 || 只有严格为 0 时才会回退，
+        // 0.3 这种被污染的值会盖掉 pos- 里正确的进度。
+        const resumeAt = Math.max(
+          0,
+          Number.isFinite(fromState) ? fromState : 0,
+          Number.isFinite(fromPosKey) ? fromPosKey : 0,
+        );
+        console.log(
+          `[restore] ${playback.audioPath.slice(0, 60)}… state=${fromState} pos=${fromPosKey} → resumeAt=${resumeAt} wasPlaying=${playback.wasPlaying}`,
+        );
         pendingRestoreRef.current = {
-          currentTime: Math.max(
-            0,
-            playback.currentTime ||
-              (savedPosition ? Number.parseFloat(savedPosition) : 0) ||
-              0,
-          ),
+          currentTime: resumeAt,
           shouldPlay: playback.wasPlaying,
         };
       };
@@ -720,9 +734,26 @@ function App() {
     const pendingRestore = pendingRestoreRef.current;
     if (!audio || !audioPath || !pendingRestore) return;
 
+    const target = pendingRestore.currentTime;
+
     const applyRestore = () => {
-      audio.currentTime = pendingRestore.currentTime;
-      setCurrentTime(pendingRestore.currentTime);
+      audio.currentTime = target;
+      setCurrentTime(target);
+
+      // 远程音频在 loadedmetadata 时未必已经能定位，赋值会被静默钳回 0。
+      // canplay 时校验一次，偏差过大就重新 seek。
+      if (target > 1) {
+        const verify = () => {
+          if (Math.abs(audio.currentTime - target) > 1.5) {
+            console.warn(
+              `[restore] seek did not stick (${audio.currentTime} vs ${target}), retrying`,
+            );
+            audio.currentTime = target;
+          }
+        };
+        audio.addEventListener("canplay", verify, { once: true });
+      }
+
       if (pendingRestore.shouldPlay) {
         audio
           .play()
