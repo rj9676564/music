@@ -437,10 +437,22 @@ func startDailyRefresh(app *pocketbase.PocketBase) {
 }
 
 func syncChannel(app *pocketbase.PocketBase, channel *core.Record) {
-	items, err := rss.FetchEpisodes(channel.GetString("rss"), 50)
+	info, items, err := rss.FetchFeed(channel.GetString("rss"), 50)
 	if err != nil {
 		log.Printf("❌ RSS Sync failed: %v", err)
 		return
+	}
+
+	// 频道封面/简介来自 RSS，仅在本地为空时回填，
+	// 不覆盖用户在后台手动改过的内容
+	if channel.GetString("image_url") == "" && info.ImageURL != "" {
+		channel.Set("image_url", info.ImageURL)
+	}
+	if channel.GetString("description") == "" && info.Description != "" {
+		channel.Set("description", info.Description)
+	}
+	if channel.GetString("author") == "" && info.Author != "" {
+		channel.Set("author", info.Author)
 	}
 
 	collection, _ := app.FindCollectionByNameOrId("episodes")
@@ -762,10 +774,33 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		c.ViewRule = ptr("")
 		c.Fields.Add(&core.TextField{Name: "name", Required: true})
 		c.Fields.Add(&core.URLField{Name: "rss", Required: true})
+		c.Fields.Add(&core.URLField{Name: "image_url"})
+		c.Fields.Add(&core.TextField{Name: "author"})
+		c.Fields.Add(&core.EditorField{Name: "description"})
 		if err := app.Save(c); err != nil {
 			log.Printf("❌ Failed to save channels collection: %v", err)
 		}
 		channels = c
+	}
+
+	// 1b. 补齐 channels 的新字段（老库迁移）
+	if channels != nil {
+		changed := false
+		for name, field := range map[string]core.Field{
+			"image_url":   &core.URLField{Name: "image_url"},
+			"author":      &core.TextField{Name: "author"},
+			"description": &core.EditorField{Name: "description"},
+		} {
+			if channels.Fields.GetByName(name) == nil {
+				channels.Fields.Add(field)
+				changed = true
+			}
+		}
+		if changed {
+			if err := app.Save(channels); err != nil {
+				log.Printf("❌ Failed to update channels collection: %v", err)
+			}
+		}
 	}
 
 	// 2. 确保 episodes 表存在
