@@ -561,6 +561,9 @@ function App() {
 
   useEffect(() => {
     if (!audioPath) return;
+    // 恢复流程里 setAudio 会先设好 audioPath，此时音频元素的 currentTime 还是 0，
+    // 直接持久化就会把刚读出来的播放进度覆盖成 0。等 applyRestore 落定后再写。
+    if (pendingRestoreRef.current) return;
     persistPlaybackState();
   }, [audioPath, currentChannel, musicInfo, persistPlaybackState]);
 
