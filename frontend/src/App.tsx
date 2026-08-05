@@ -209,6 +209,14 @@ function App() {
       const path = overrides?.audioPath ?? playerState.audioPath;
       if (!path) return;
 
+      // 恢复尚未落定前一律不写盘。此时音频元素刚创建、currentTime 还是 0，
+      // 任何一次持久化都会把刚读回来的进度覆盖掉。
+      //
+      // 守卫必须放在这里而不是某个调用点：setCurrentChannel 会改变
+      // persistPlaybackState 的身份，进而让 beforeunload 那个 effect 重建，
+      // 而它的 cleanup 会直接调用 handleBeforeUnload() —— 恢复过程中正好命中。
+      if (pendingRestoreRef.current) return;
+
       // srtContent 和 translation 都要持久化：restoreTrack 靠它们重建双语歌词。
       // 体积上两者同量级（各几十 KB），而 srtContent 一直都是这么存的。
       const persistableMusicInfo = overrides?.musicInfo ?? playerState.musicInfo;
@@ -560,9 +568,6 @@ function App() {
 
   useEffect(() => {
     if (!audioPath) return;
-    // 恢复流程里 setAudio 会先设好 audioPath，此时音频元素的 currentTime 还是 0，
-    // 直接持久化就会把刚读出来的播放进度覆盖成 0。等 applyRestore 落定后再写。
-    if (pendingRestoreRef.current) return;
     persistPlaybackState();
   }, [audioPath, currentChannel, musicInfo, persistPlaybackState]);
 
