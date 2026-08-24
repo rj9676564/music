@@ -7,7 +7,8 @@ type Channel struct {
 	Name        string    `json:"name"`
 	Author      string    `json:"author"`
 	RSS         string    `json:"rss"`
-	Description string    `json:"description"`
+	ImageURL    string    `json:"image_url"`
+	AutoConvert bool      `json:"auto_convert"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 

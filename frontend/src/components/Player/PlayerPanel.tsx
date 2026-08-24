@@ -6,8 +6,9 @@ import { EmptyState } from "../ui/EmptyState";
 import { IconButton } from "../ui/IconButton";
 import { PlayButton } from "../ui/PlayButton";
 import { Select } from "../ui/Select";
+import { SpeedControl } from "../ui/SpeedControl";
 import { Spinner } from "../ui/Spinner";
-import { color, fontSize, radius, gradient, CONTROL_HEIGHT } from "../../styles/tokens";
+import { color, radius, gradient, CONTROL_HEIGHT } from "../../styles/tokens";
 
 interface PlayerPanelProps {
   settings: any;
@@ -502,18 +503,9 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 }))}
               />
             </div>
-            <Select
-              title="播放倍速"
-              value={playbackRate}
-              onChange={(v) => setPlaybackRate(parseFloat(v))}
-              options={[
-                { value: 0.5, label: "0.5x" },
-                { value: 0.75, label: "0.75x" },
-                { value: 1, label: "1.0x" },
-                { value: 1.25, label: "1.25x" },
-                { value: 1.5, label: "1.5x" },
-                { value: 2, label: "2.0x" },
-              ]}
+            <SpeedControl
+              playbackRate={playbackRate}
+              onChange={setPlaybackRate}
             />
           </div>
         </div>

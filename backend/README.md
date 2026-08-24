@@ -57,7 +57,8 @@ backend/
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/_/` | GET | PocketBase 管理后台 |
-| `/api/channels` | GET | 获取频道列表 |
+| `/api/channels` | GET | 获取频道列表（包含 `auto_convert` 等配置） |
+| `/api/channels/:id` | PATCH | 更新频道配置（如修改 `auto_convert` 自动转换开关） |
 | `/api/channels/:id/episodes` | GET | 获取节目列表（自动按需刷新） |
 | `/api/dynamic/interfaces` | GET | 获取 Flutter 动态页所有可用接口列表（仅返回 `method` 和 `url`） |
 | `/api/dynamic/interfaces/basic-info` | GET | 获取所有可用动态页基础信息列表（不包含页面详情数据） |

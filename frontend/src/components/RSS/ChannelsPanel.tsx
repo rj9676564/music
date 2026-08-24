@@ -11,6 +11,7 @@ interface Channel {
   name: string;
   description?: string;
   image_url?: string;
+  auto_convert?: boolean;
 }
 
 interface ChannelsPanelProps {

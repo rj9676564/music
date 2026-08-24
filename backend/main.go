@@ -56,6 +56,51 @@ func main() {
 			return e.JSON(http.StatusOK, records)
 		})
 
+		// 更新频道配置（如修改 auto_convert、name 等）
+		e.Router.PATCH("/api/channels/{id}", func(e *core.RequestEvent) error {
+			channelID := e.Request.PathValue("id")
+			channel, err := app.FindRecordById("channels", channelID)
+			if err != nil {
+				return apis.NewNotFoundError("Channel not found", err)
+			}
+
+			var data struct {
+				AutoConvert *bool   `json:"auto_convert"`
+				Name        *string `json:"name"`
+				Description *string `json:"description"`
+				Author      *string `json:"author"`
+				ImageURL    *string `json:"image_url"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return apis.NewBadRequestError("Invalid request body", err)
+			}
+
+			if data.AutoConvert != nil {
+				channel.Set("auto_convert", *data.AutoConvert)
+			}
+			if data.Name != nil {
+				channel.Set("name", *data.Name)
+			}
+			if data.Description != nil {
+				channel.Set("description", *data.Description)
+			}
+			if data.Author != nil {
+				channel.Set("author", *data.Author)
+			}
+			if data.ImageURL != nil {
+				channel.Set("image_url", *data.ImageURL)
+			}
+
+			if err := app.Save(channel); err != nil {
+				return apis.NewBadRequestError("Failed to update channel", err)
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"channel": channel,
+			})
+		})
+
 		// 获取频道节目
 		e.Router.GET("/api/channels/{id}/episodes", func(e *core.RequestEvent) error {
 			channelID := e.Request.PathValue("id")
@@ -87,12 +132,12 @@ func main() {
 			})
 		})
 
-		// 待转录列表
+		// 待转录列表（仅检索开启了自动转换 auto_convert = true 的频道单集）
 		e.Router.GET("/api/episodes/missing-srt", func(e *core.RequestEvent) error {
 			twoDaysAgo := time.Now().AddDate(0, 0, -2).Format("2006-01-02 15:04:05")
 			episodes, err := app.FindRecordsByFilter(
 				"episodes",
-				"srt_content = '' && (pub_date > {:twoDaysAgo} || transcription_status = 'pending')",
+				"srt_content = '' && channel_id.auto_convert = true && (pub_date > {:twoDaysAgo} || transcription_status = 'pending')",
 				"-pub_date",
 				1, 0,
 				dbx.Params{"twoDaysAgo": twoDaysAgo},
@@ -780,6 +825,7 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.URLField{Name: "image_url"})
 		c.Fields.Add(&core.TextField{Name: "author"})
 		c.Fields.Add(&core.EditorField{Name: "description"})
+		c.Fields.Add(&core.BoolField{Name: "auto_convert"})
 		if err := app.Save(c); err != nil {
 			log.Printf("❌ Failed to save channels collection: %v", err)
 		}
@@ -790,9 +836,10 @@ func ensureCollections(app *pocketbase.PocketBase) {
 	if channels != nil {
 		changed := false
 		for name, field := range map[string]core.Field{
-			"image_url":   &core.URLField{Name: "image_url"},
-			"author":      &core.TextField{Name: "author"},
-			"description": &core.EditorField{Name: "description"},
+			"image_url":    &core.URLField{Name: "image_url"},
+			"author":       &core.TextField{Name: "author"},
+			"description":  &core.EditorField{Name: "description"},
+			"auto_convert": &core.BoolField{Name: "auto_convert"},
 		} {
 			if channels.Fields.GetByName(name) == nil {
 				channels.Fields.Add(field)

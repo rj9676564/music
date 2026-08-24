@@ -131,6 +131,26 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 显示译文
               </label>
             </div>
+            <div className="setting-item setting-item-checkbox">
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  cursor: "pointer",
+                }}>
+                <input
+                  type="checkbox"
+                  checked={settings.pauseOnHeadphoneDisconnect ?? true}
+                  onChange={(e) =>
+                    settings.updateSettings({
+                      pauseOnHeadphoneDisconnect: e.target.checked,
+                    })
+                  }
+                />
+                摘下/断开耳机时自动暂停
+              </label>
+            </div>
             <div className="setting-item">
               <label>
                 歌词时间偏移: {settings.lyricOffset > 0 ? "+" : ""}
