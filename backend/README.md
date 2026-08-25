@@ -63,12 +63,26 @@ backend/
 | `/api/dynamic/interfaces` | GET | 获取 Flutter 动态页所有可用接口列表（仅返回 `method` 和 `url`） |
 | `/api/dynamic/interfaces/basic-info` | GET | 获取所有可用动态页基础信息列表（不包含页面详情数据） |
 | `/api/dynamic/interfaces/:pageKey` | GET | 按 pageKey 获取动态页 schema、JS 与版本状态 |
-| `/api/episodes/missing-srt` | GET | 获取待转录任务列表 |
-| `/api/save-srt` | POST | 保存生成好的字幕（保存后自动触发歌词翻译） |
+| `/api/transcription-jobs` | POST / GET | 新增转录任务 / 查询任务列表 |
+| `/api/transcription-jobs/claim` | POST | Worker 原子认领任务（带租约与超时回收） |
+| `/api/transcription-jobs/complete` | POST | Worker 提交转录完成字幕（更新任务与单集，触发自动翻译） |
+| `/api/transcription-jobs/fail` | POST | Worker 上报转录失败（支持自动重试与最大重试次数） |
+| `/api/episodes/missing-srt` | GET | 获取待转录任务列表（兼容老 worker） |
+| `/api/queue-transcription` | POST | 加入转录队列（兼容老接口） |
+| `/api/save-srt` | POST | 保存生成好的字幕（保存后自动触发歌词翻译，兼容老接口） |
 | `/api/summary` | POST | 调用 AI 生成内容摘要 |
 | `/api/translate` | POST | 调用 AI 翻译歌词/字幕，结果缓存到 `episodes.translation` |
 | `/media/*` | GET | 访问本地缓存的音频文件 |
 | `/doc` | GET | 查看详细 API 文档 |
+
+## 🎙️ 转录任务队列系统 (transcription_jobs)
+
+转录采用独立的持久化任务表与分布式 Worker 认领机制：
+1. **任务入队**：RSS 同步开启了 `auto_convert` 的频道或前端手动触发时，写入 `transcription_jobs`，状态为 `pending`。
+2. **原子认领 (Lease)**：Worker 请求 `POST /api/transcription-jobs/claim`，服务端在带优先级的队列中原子锁定一条任务置为 `processing`，并记录 `locked_at` 与 `locked_by`。超时的任务会自动回收重新入队。
+3. **本地缓存复用**：Worker 检测到本地已存在同 GUID 的 `.srt` 文件时，跳过下载与 Whisper 转录，直接上传。
+4. **完成与失败重试**：完成时 `POST /complete` 更新任务状态、落盘 `episodes.srt_content` 并异步触发翻译；失败时 `POST /fail` 记录错误并进行重试控制。
+
 
 ## 🌐 歌词翻译 (服务端)
 

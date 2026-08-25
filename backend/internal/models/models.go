@@ -27,3 +27,22 @@ type Episode struct {
 	TranscriptionStatus string    `json:"transcription_status"`
 	LocalAudioPath      string    `json:"local_audio_path"`
 }
+
+type TranscriptionJob struct {
+	ID          string     `json:"id"`
+	EpisodeGUID string     `json:"episode_guid"`
+	ChannelID   string     `json:"channel_id"`
+	Title       string     `json:"title"`
+	AudioURL    string     `json:"audio_url"`
+	Status      string     `json:"status"` // pending | processing | completed | failed
+	Priority    int        `json:"priority"`
+	Attempts    int        `json:"attempts"`
+	MaxAttempts int        `json:"max_attempts"`
+	LockedAt    *time.Time `json:"locked_at,omitempty"`
+	LockedBy    string     `json:"locked_by,omitempty"`
+	LastError   string     `json:"last_error,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	SrtContent  string     `json:"srt_content,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}

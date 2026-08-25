@@ -132,23 +132,34 @@ func main() {
 			})
 		})
 
-		// 待转录列表（仅检索开启了自动转换 auto_convert = true 的频道单集）
+		// 待转录列表（兼容老 worker，内部使用原子 claim 机制）
 		e.Router.GET("/api/episodes/missing-srt", func(e *core.RequestEvent) error {
-			twoDaysAgo := time.Now().AddDate(0, 0, -2).Format("2006-01-02 15:04:05")
-			episodes, err := app.FindRecordsByFilter(
-				"episodes",
-				"srt_content = '' && channel_id.auto_convert = true && (pub_date > {:twoDaysAgo} || transcription_status = 'pending')",
-				"-pub_date",
-				1, 0,
-				dbx.Params{"twoDaysAgo": twoDaysAgo},
-			)
+			job, err := claimTranscriptionJob(app, "legacy-missing-srt-client", 15*time.Minute)
 			if err != nil {
 				return err
 			}
+			if job == nil {
+				return e.JSON(http.StatusOK, map[string]interface{}{
+					"success":  true,
+					"count":    0,
+					"episodes": []interface{}{},
+				})
+			}
+
+			episodeMap := map[string]interface{}{
+				"id":                   job.Id,
+				"guid":                 job.GetString("episode_guid"),
+				"channel_id":           job.GetString("channel_id"),
+				"title":                job.GetString("title"),
+				"audio_url":            job.GetString("audio_url"),
+				"transcription_status": job.GetString("status"),
+				"srt_content":          job.GetString("srt_content"),
+			}
+
 			return e.JSON(http.StatusOK, map[string]interface{}{
 				"success":  true,
-				"count":    len(episodes),
-				"episodes": episodes,
+				"count":    1,
+				"episodes": []interface{}{episodeMap},
 			})
 		})
 
@@ -299,7 +310,7 @@ func main() {
 			})
 		})
 
-		// 保存 SRT
+		// 保存 SRT (兼容旧接口)
 		e.Router.POST("/api/save-srt", func(e *core.RequestEvent) error {
 			var data struct {
 				GUID       string `json:"guid"`
@@ -309,24 +320,14 @@ func main() {
 				return err
 			}
 
-			record, err := app.FindFirstRecordByData("episodes", "guid", data.GUID)
-			if err != nil {
-				return apis.NewNotFoundError("Episode not found", nil)
+			if err := completeTranscriptionJob(app, data.GUID, data.SrtContent); err != nil {
+				return apis.NewNotFoundError("Episode not found", err)
 			}
-
-			record.Set("srt_content", data.SrtContent)
-			record.Set("transcription_status", "completed")
-			if err := app.Save(record); err != nil {
-				return err
-			}
-
-			// 转录完成后自动翻译，异步执行避免阻塞转录端
-			go autoTranslateEpisode(app, data.GUID, data.SrtContent)
 
 			return e.JSON(http.StatusOK, map[string]bool{"success": true})
 		})
 
-		// 加入转录队列
+		// 加入转录队列 (兼容旧接口)
 		e.Router.POST("/api/queue-transcription", func(e *core.RequestEvent) error {
 			var data struct {
 				GUID     string `json:"guid"`
@@ -337,22 +338,186 @@ func main() {
 				return err
 			}
 
-			record, err := app.FindFirstRecordByData("episodes", "guid", data.GUID)
+			job, created, err := enqueueTranscriptionJob(app, data.GUID, data.AudioURL, data.Title, "", 10)
 			if err != nil {
-				return apis.NewNotFoundError("Episode not found", nil)
+				return apis.NewBadRequestError("Failed to queue transcription", err)
 			}
-
-			// Do not override if completed
-			if record.GetString("transcription_status") == "completed" {
+			if job == nil && !created {
 				return e.JSON(http.StatusOK, map[string]interface{}{"success": true, "status": "already_completed"})
 			}
 
-			record.Set("transcription_status", "pending")
-			if err := app.Save(record); err != nil {
+			return e.JSON(http.StatusOK, map[string]bool{"success": true})
+		})
+
+		// --- 转录任务队列 API ---
+		// 1. 新增/入队任务
+		e.Router.POST("/api/transcription-jobs", func(e *core.RequestEvent) error {
+			var data struct {
+				GUID     string `json:"guid"`
+				AudioURL string `json:"audioUrl"`
+				Title    string `json:"title"`
+				Priority int    `json:"priority"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return apis.NewBadRequestError("Invalid request body", err)
+			}
+
+			priority := data.Priority
+			if priority <= 0 {
+				priority = 10
+			}
+
+			job, created, err := enqueueTranscriptionJob(app, data.GUID, data.AudioURL, data.Title, "", priority)
+			if err != nil {
+				return apis.NewBadRequestError("Failed to enqueue job", err)
+			}
+			if job == nil && !created {
+				return e.JSON(http.StatusOK, map[string]interface{}{
+					"success": true,
+					"status":  "already_completed",
+				})
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"status":  job.GetString("status"),
+				"job":     job,
+			})
+		})
+
+		// 2. worker 原子领任务 (Lease 机制)
+		e.Router.POST("/api/transcription-jobs/claim", func(e *core.RequestEvent) error {
+			var data struct {
+				WorkerID     string `json:"workerId"`
+				LeaseSeconds int    `json:"leaseSeconds"`
+			}
+			_ = e.BindBody(&data)
+
+			lease := 10 * time.Minute
+			if data.LeaseSeconds > 0 {
+				lease = time.Duration(data.LeaseSeconds) * time.Second
+			}
+
+			job, err := claimTranscriptionJob(app, data.WorkerID, lease)
+			if err != nil {
+				return apis.NewBadRequestError("Failed to claim job", err)
+			}
+
+			if job == nil {
+				return e.JSON(http.StatusOK, map[string]interface{}{
+					"success": true,
+					"job":     nil,
+				})
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"job":     job,
+			})
+		})
+
+		// 3. 转录完成提交
+		completeJobHandler := func(e *core.RequestEvent) error {
+			var data struct {
+				JobID      string `json:"jobId"`
+				GUID       string `json:"guid"`
+				SrtContent string `json:"srtContent"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return apis.NewBadRequestError("Invalid request body", err)
+			}
+
+			guid := strings.TrimSpace(data.GUID)
+			if guid == "" && data.JobID != "" {
+				if job, _ := app.FindRecordById("transcription_jobs", data.JobID); job != nil {
+					guid = job.GetString("episode_guid")
+				}
+			}
+			if guid == "" {
+				idParam := e.Request.PathValue("id")
+				if idParam != "" {
+					if job, _ := app.FindRecordById("transcription_jobs", idParam); job != nil {
+						guid = job.GetString("episode_guid")
+					}
+				}
+			}
+
+			if guid == "" {
+				return apis.NewBadRequestError("guid or jobId is required", nil)
+			}
+
+			if err := completeTranscriptionJob(app, guid, data.SrtContent); err != nil {
+				return apis.NewBadRequestError("Failed to complete job", err)
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+			})
+		}
+		e.Router.POST("/api/transcription-jobs/complete", completeJobHandler)
+		e.Router.POST("/api/transcription-jobs/{id}/complete", completeJobHandler)
+
+		// 4. 转录失败上报 (重试或标记失败)
+		failJobHandler := func(e *core.RequestEvent) error {
+			var data struct {
+				JobID string `json:"jobId"`
+				GUID  string `json:"guid"`
+				Error string `json:"error"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return apis.NewBadRequestError("Invalid request body", err)
+			}
+
+			guid := strings.TrimSpace(data.GUID)
+			if guid == "" && data.JobID != "" {
+				if job, _ := app.FindRecordById("transcription_jobs", data.JobID); job != nil {
+					guid = job.GetString("episode_guid")
+				}
+			}
+			if guid == "" {
+				idParam := e.Request.PathValue("id")
+				if idParam != "" {
+					if job, _ := app.FindRecordById("transcription_jobs", idParam); job != nil {
+						guid = job.GetString("episode_guid")
+					}
+				}
+			}
+
+			if guid == "" {
+				return apis.NewBadRequestError("guid or jobId is required", nil)
+			}
+
+			if err := failTranscriptionJob(app, guid, data.Error); err != nil {
+				return apis.NewBadRequestError("Failed to mark job failure", err)
+			}
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+			})
+		}
+		e.Router.POST("/api/transcription-jobs/fail", failJobHandler)
+		e.Router.POST("/api/transcription-jobs/{id}/fail", failJobHandler)
+
+		// 5. 任务列表查询
+		e.Router.GET("/api/transcription-jobs", func(e *core.RequestEvent) error {
+			status := strings.TrimSpace(e.Request.URL.Query().Get("status"))
+			filter := "1=1"
+			params := dbx.Params{}
+			if status != "" {
+				filter = "status = {:status}"
+				params["status"] = status
+			}
+
+			jobs, err := app.FindRecordsByFilter("transcription_jobs", filter, "-created", 100, 0, params)
+			if err != nil {
 				return err
 			}
 
-			return e.JSON(http.StatusOK, map[string]bool{"success": true})
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"count":   len(jobs),
+				"jobs":    jobs,
+			})
 		})
 
 		// 摘要生成
@@ -522,9 +687,262 @@ func syncChannel(app *pocketbase.PocketBase, channel *core.Record) {
 		}
 
 		app.Save(record)
+
+		// 若频道开启了自动转换，自动加入待转录任务表
+		if channel.GetBool("auto_convert") {
+			twoDaysAgo := time.Now().UTC().AddDate(0, 0, -2)
+			if item.PubDate.After(twoDaysAgo) && record.GetString("srt_content") == "" && record.GetString("transcription_status") != "completed" {
+				_, _, _ = enqueueTranscriptionJob(app, item.GUID, item.AudioURL, item.Title, channel.Id, 0)
+			}
+		}
 	}
 	channel.Set("updated_at", time.Now())
 	app.Save(channel)
+}
+
+// enqueueTranscriptionJob 加入持久化转录任务表
+func enqueueTranscriptionJob(app *pocketbase.PocketBase, guid, audioURL, title, channelID string, priority int) (*core.Record, bool, error) {
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		return nil, false, fmt.Errorf("guid is required")
+	}
+
+	ep, _ := app.FindFirstRecordByData("episodes", "guid", guid)
+	if ep != nil {
+		if ep.GetString("srt_content") != "" || ep.GetString("transcription_status") == "completed" {
+			return nil, false, nil // 已完成
+		}
+		if audioURL == "" {
+			audioURL = ep.GetString("audio_url")
+		}
+		if title == "" {
+			title = ep.GetString("title")
+		}
+		if channelID == "" {
+			channelID = ep.GetString("channel_id")
+		}
+	}
+
+	jobCollection, err := app.FindCollectionByNameOrId("transcription_jobs")
+	if err != nil {
+		return nil, false, err
+	}
+
+	existingJob, _ := app.FindFirstRecordByData("transcription_jobs", "episode_guid", guid)
+	var job *core.Record
+	if existingJob != nil {
+		if existingJob.GetString("status") == "completed" {
+			return existingJob, false, nil
+		}
+		job = existingJob
+		curPriority := job.GetInt("priority")
+		if priority > curPriority {
+			job.Set("priority", priority)
+		}
+	} else {
+		job = core.NewRecord(jobCollection)
+		job.Set("episode_guid", guid)
+		job.Set("max_attempts", 3)
+		job.Set("priority", priority)
+	}
+
+	if channelID != "" {
+		job.Set("channel_id", channelID)
+	}
+	if title != "" {
+		job.Set("title", title)
+	}
+	if audioURL != "" {
+		job.Set("audio_url", audioURL)
+	}
+	job.Set("status", "pending")
+	job.Set("attempts", 0)
+	job.Set("last_error", "")
+	job.Set("locked_by", "")
+	job.Set("locked_at", nil)
+
+	if err := app.Save(job); err != nil {
+		return nil, false, err
+	}
+
+	if ep != nil {
+		ep.Set("transcription_status", "pending")
+		_ = app.Save(ep)
+	}
+
+	return job, true, nil
+}
+
+// claimTranscriptionJob 原子认领一条待转录任务（并回收超时 processing 任务）
+func claimTranscriptionJob(app *pocketbase.PocketBase, workerID string, leaseDuration time.Duration) (*core.Record, error) {
+	if workerID == "" {
+		workerID = "default-worker"
+	}
+	if leaseDuration <= 0 {
+		leaseDuration = 10 * time.Minute
+	}
+
+	// 1. 回收超时 processing 任务
+	expiredCutoff := time.Now().UTC().Add(-leaseDuration).Format("2006-01-02 15:04:05.000Z")
+	staleJobs, err := app.FindRecordsByFilter(
+		"transcription_jobs",
+		"status = 'processing' && locked_at != '' && locked_at != null && locked_at < {:cutoff}",
+		"-locked_at",
+		50, 0,
+		dbx.Params{"cutoff": expiredCutoff},
+	)
+	if err == nil {
+		for _, staleJob := range staleJobs {
+			attempts := staleJob.GetInt("attempts")
+			maxAttempts := staleJob.GetInt("max_attempts")
+			if maxAttempts <= 0 {
+				maxAttempts = 3
+			}
+
+			if attempts >= maxAttempts {
+				staleJob.Set("status", "failed")
+				staleJob.Set("last_error", "Lease expired and max attempts reached")
+				_ = app.Save(staleJob)
+				if ep, _ := app.FindFirstRecordByData("episodes", "guid", staleJob.GetString("episode_guid")); ep != nil {
+					ep.Set("transcription_status", "failed")
+					_ = app.Save(ep)
+				}
+			} else {
+				staleJob.Set("status", "pending")
+				staleJob.Set("locked_by", "")
+				staleJob.Set("last_error", "Lease expired, rescheduled for retry")
+				_ = app.Save(staleJob)
+				if ep, _ := app.FindFirstRecordByData("episodes", "guid", staleJob.GetString("episode_guid")); ep != nil {
+					ep.Set("transcription_status", "pending")
+					_ = app.Save(ep)
+				}
+			}
+		}
+	}
+
+	// 2. 从 transcription_jobs 表中查找待转录任务
+	pendingJobs, _ := app.FindRecordsByFilter(
+		"transcription_jobs",
+		"status = 'pending' && attempts < 3",
+		"-priority,created",
+		1, 0,
+	)
+
+	var claimed *core.Record
+	if len(pendingJobs) > 0 {
+		claimed = pendingJobs[0]
+	} else {
+		// 3. Fallback: 检查是否有 episodes 表中的遗留/自动转录单集
+		twoDaysAgo := time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02 15:04:05.000Z")
+		legacyEpisodes, _ := app.FindRecordsByFilter(
+			"episodes",
+			"(srt_content = '' || srt_content = null) && transcription_status != 'completed' && transcription_status != 'failed' && (transcription_status = 'pending' || (channel_id.auto_convert = true && pub_date > {:twoDaysAgo}))",
+			"-transcription_status,-pub_date",
+			1, 0,
+			dbx.Params{"twoDaysAgo": twoDaysAgo},
+		)
+		if len(legacyEpisodes) > 0 {
+			ep := legacyEpisodes[0]
+			priority := 0
+			if ep.GetString("transcription_status") == "pending" {
+				priority = 10
+			}
+			job, _, _ := enqueueTranscriptionJob(app, ep.GetString("guid"), ep.GetString("audio_url"), ep.GetString("title"), ep.GetString("channel_id"), priority)
+			claimed = job
+		}
+	}
+
+	if claimed == nil {
+		return nil, nil
+	}
+
+	// 原子标记为 processing 并增加 attempts
+	claimed.Set("status", "processing")
+	claimed.Set("locked_at", time.Now().UTC().Format("2006-01-02 15:04:05.000Z"))
+	claimed.Set("locked_by", workerID)
+	claimed.Set("attempts", claimed.GetInt("attempts")+1)
+	if err := app.Save(claimed); err != nil {
+		return nil, err
+	}
+
+	if ep, _ := app.FindFirstRecordByData("episodes", "guid", claimed.GetString("episode_guid")); ep != nil {
+		ep.Set("transcription_status", "processing")
+		_ = app.Save(ep)
+	}
+
+	return claimed, nil
+}
+
+// completeTranscriptionJob 完成转录并落盘字幕
+func completeTranscriptionJob(app *pocketbase.PocketBase, guid, srtContent string) error {
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		return fmt.Errorf("guid is required")
+	}
+
+	// 1. 更新 episodes
+	ep, err := app.FindFirstRecordByData("episodes", "guid", guid)
+	if err == nil && ep != nil {
+		ep.Set("srt_content", srtContent)
+		ep.Set("transcription_status", "completed")
+		_ = app.Save(ep)
+	}
+
+	// 2. 更新 transcription_jobs
+	job, err := app.FindFirstRecordByData("transcription_jobs", "episode_guid", guid)
+	if err == nil && job != nil {
+		job.Set("status", "completed")
+		job.Set("completed_at", time.Now().UTC().Format("2006-01-02 15:04:05.000Z"))
+		job.Set("last_error", "")
+		job.Set("srt_content", srtContent)
+		_ = app.Save(job)
+	}
+
+	// 3. 转录完成后自动翻译，异步执行避免阻塞转录端
+	go autoTranslateEpisode(app, guid, srtContent)
+
+	return nil
+}
+
+// failTranscriptionJob 记录转录失败
+func failTranscriptionJob(app *pocketbase.PocketBase, guid, errorMessage string) error {
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		return fmt.Errorf("guid is required")
+	}
+
+	job, err := app.FindFirstRecordByData("transcription_jobs", "episode_guid", guid)
+	if err == nil && job != nil {
+		attempts := job.GetInt("attempts")
+		maxAttempts := job.GetInt("max_attempts")
+		if maxAttempts <= 0 {
+			maxAttempts = 3
+		}
+
+		job.Set("last_error", errorMessage)
+		if attempts >= maxAttempts {
+			job.Set("status", "failed")
+			if ep, _ := app.FindFirstRecordByData("episodes", "guid", guid); ep != nil {
+				ep.Set("transcription_status", "failed")
+				_ = app.Save(ep)
+			}
+		} else {
+			job.Set("status", "pending")
+			job.Set("locked_by", "")
+			if ep, _ := app.FindFirstRecordByData("episodes", "guid", guid); ep != nil {
+				ep.Set("transcription_status", "pending")
+				_ = app.Save(ep)
+			}
+		}
+		return app.Save(job)
+	}
+
+	if ep, _ := app.FindFirstRecordByData("episodes", "guid", guid); ep != nil {
+		ep.Set("transcription_status", "failed")
+		return app.Save(ep)
+	}
+
+	return nil
 }
 
 func callLLMForSummary(content, customKey, customBase, customModel string) (string, error) {
@@ -760,6 +1178,83 @@ func addEditorFieldIfMissing(collection *core.Collection, name string) bool {
 	return true
 }
 
+func addNumberFieldIfMissing(collection *core.Collection, name string) bool {
+	if collection.Fields.GetByName(name) != nil {
+		return false
+	}
+	collection.Fields.Add(&core.NumberField{Name: name})
+	return true
+}
+
+func addDateFieldIfMissing(collection *core.Collection, name string) bool {
+	if collection.Fields.GetByName(name) != nil {
+		return false
+	}
+	collection.Fields.Add(&core.DateField{Name: name})
+	return true
+}
+
+func addURLFieldIfMissing(collection *core.Collection, name string) bool {
+	if collection.Fields.GetByName(name) != nil {
+		return false
+	}
+	collection.Fields.Add(&core.URLField{Name: name})
+	return true
+}
+
+func ensureTranscriptionJobsCollection(app *pocketbase.PocketBase) {
+	collection, err := app.FindCollectionByNameOrId("transcription_jobs")
+	if err != nil {
+		log.Println("👷 Creating 'transcription_jobs' collection...")
+		c := &core.Collection{}
+		c.Name = "transcription_jobs"
+		c.Type = core.CollectionTypeBase
+		c.ListRule = ptr("")
+		c.ViewRule = ptr("")
+		c.Fields.Add(&core.TextField{Name: "episode_guid", Required: true})
+		c.Fields.Add(&core.TextField{Name: "channel_id"})
+		c.Fields.Add(&core.TextField{Name: "title"})
+		c.Fields.Add(&core.URLField{Name: "audio_url"})
+		c.Fields.Add(&core.TextField{Name: "status"}) // pending | processing | completed | failed
+		c.Fields.Add(&core.NumberField{Name: "priority"})
+		c.Fields.Add(&core.NumberField{Name: "attempts"})
+		c.Fields.Add(&core.NumberField{Name: "max_attempts"})
+		c.Fields.Add(&core.DateField{Name: "locked_at"})
+		c.Fields.Add(&core.TextField{Name: "locked_by"})
+		c.Fields.Add(&core.EditorField{Name: "last_error"})
+		c.Fields.Add(&core.DateField{Name: "completed_at"})
+		c.Fields.Add(&core.EditorField{Name: "srt_content"})
+
+		if err := app.Save(c); err != nil {
+			log.Printf("❌ Failed to save transcription_jobs collection: %v", err)
+		} else {
+			log.Println("✅ transcription_jobs collection created successfully!")
+		}
+		return
+	}
+
+	changed := false
+	changed = addTextFieldIfMissing(collection, "episode_guid", true) || changed
+	changed = addTextFieldIfMissing(collection, "channel_id", false) || changed
+	changed = addTextFieldIfMissing(collection, "title", false) || changed
+	changed = addURLFieldIfMissing(collection, "audio_url") || changed
+	changed = addTextFieldIfMissing(collection, "status", false) || changed
+	changed = addNumberFieldIfMissing(collection, "priority") || changed
+	changed = addNumberFieldIfMissing(collection, "attempts") || changed
+	changed = addNumberFieldIfMissing(collection, "max_attempts") || changed
+	changed = addDateFieldIfMissing(collection, "locked_at") || changed
+	changed = addTextFieldIfMissing(collection, "locked_by", false) || changed
+	changed = addEditorFieldIfMissing(collection, "last_error") || changed
+	changed = addDateFieldIfMissing(collection, "completed_at") || changed
+	changed = addEditorFieldIfMissing(collection, "srt_content") || changed
+
+	if changed {
+		if err := app.Save(collection); err != nil {
+			log.Printf("❌ Failed to update transcription_jobs collection: %v", err)
+		}
+	}
+}
+
 func ensureDynamicInterfacesCollection(app *pocketbase.PocketBase) {
 	collection, err := app.FindCollectionByNameOrId("dynamic_interfaces")
 	if err != nil {
@@ -924,4 +1419,7 @@ func ensureCollections(app *pocketbase.PocketBase) {
 
 	// 3. 确保 dynamic_interfaces 表存在
 	ensureDynamicInterfacesCollection(app)
+
+	// 4. 确保 transcription_jobs 表存在
+	ensureTranscriptionJobsCollection(app)
 }
