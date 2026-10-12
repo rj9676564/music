@@ -7,7 +7,7 @@ import { IconButton } from "../ui/IconButton";
 import { PlayButton } from "../ui/PlayButton";
 import { Select } from "../ui/Select";
 import { Spinner } from "../ui/Spinner";
-import { color, fontSize, radius, gradient, CONTROL_HEIGHT } from "../../styles/tokens";
+import { color, radius, gradient, CONTROL_HEIGHT } from "../../styles/tokens";
 
 interface PlayerPanelProps {
   settings: any;
