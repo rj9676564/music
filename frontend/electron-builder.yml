@@ -13,8 +13,24 @@ files:
   - package.json
 mac:
   artifactName: ${productName}_${version}_${arch}.${ext}
-  target: dmg
+  target:
+    - target: dmg
+      arch:
+        - arm64
   icon: public/icon.png
+  category: public.app-category.music
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  identity: null
+dmg:
+  artifactName: ${productName}_${version}_${arch}.${ext}
+  contents:
+    - x: 140
+      y: 190
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications
 win:
   target: nsis
   artifactName: ${productName}_${version}_${arch}.${ext}
@@ -26,3 +42,4 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+

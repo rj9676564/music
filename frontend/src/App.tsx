@@ -98,6 +98,8 @@ function App() {
     currentTime: number;
     shouldPlay: boolean;
   } | null>(null);
+  const knownAudioOutputsRef = useRef<{ id: string; label: string; groupId: string }[]>([]);
+  const hasInitializedDevicesRef = useRef(false);
 
   const resetSentenceLoop = useCallback(() => {
     setSentenceLoopEnabled(false);
@@ -494,11 +496,26 @@ function App() {
         e.preventDefault();
         resetSentenceLoop();
         if (audioRef.current) audioRef.current.currentTime -= 5;
+      } else if (e.key === "[") {
+        e.preventDefault();
+        const currentRate = usePlayerStore.getState().playbackRate;
+        const delta = e.shiftKey ? 0.1 : 0.05;
+        const newRate = Math.max(0.25, Math.round((currentRate - delta) * 100) / 100);
+        setPlaybackRate(newRate);
+      } else if (e.key === "]") {
+        e.preventDefault();
+        const currentRate = usePlayerStore.getState().playbackRate;
+        const delta = e.shiftKey ? 0.1 : 0.05;
+        const newRate = Math.min(3.0, Math.round((currentRate + delta) * 100) / 100);
+        setPlaybackRate(newRate);
+      } else if (e.key === "\\") {
+        e.preventDefault();
+        setPlaybackRate(1.0);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [resetSentenceLoop, togglePlay, toggleSentenceLoop]);
+  }, [resetSentenceLoop, togglePlay, toggleSentenceLoop, setPlaybackRate]);
 
   // Settings Sync (IPC)
   useEffect(() => {
@@ -546,6 +563,7 @@ function App() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    audio.preservesPitch = true;
     if (audio.playbackRate !== playbackRate) {
       console.log("⏩ Setting playback rate to:", playbackRate);
       audio.playbackRate = playbackRate;
@@ -816,28 +834,146 @@ function App() {
       return;
     }
 
-    let lastDeviceCount = 0;
-    let deviceCheckTimeout: NodeJS.Timeout | null = null;
-
-    // 检查设备是否可用
-    const checkDevices = async () => {
+    // Media Session API (支持 macOS 系统媒体中心、快捷键、以及 AirPods 摘下入耳检测自动暂停)
+    if ("mediaSession" in navigator) {
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioOutputs = devices.filter(
-          (device) => device.kind === "audiooutput",
-        );
-        const currentDeviceCount = audioOutputs.length;
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: musicInfo?.name || "未选择歌曲",
+          artist: musicInfo?.artist || "未知艺术家",
+          album: "Molten Music",
+          artwork: musicInfo?.cover
+            ? [
+                {
+                  src: musicInfo.cover,
+                  sizes: "512x512",
+                  type: "image/png",
+                },
+              ]
+            : [],
+        });
 
-        // 如果设备数量减少，可能是设备断开
-        if (lastDeviceCount > 0 && currentDeviceCount < lastDeviceCount) {
-          console.log("Audio device disconnected, pausing playback");
+        navigator.mediaSession.setActionHandler("play", () => {
+          if (audioRef.current && !isPlaying) {
+            audioRef.current
+              .play()
+              .then(() => setPlaying(true))
+              .catch((err) => console.error("MediaSession play error:", err));
+          }
+        });
+
+        navigator.mediaSession.setActionHandler("pause", () => {
+          console.log(
+            "🎧 MediaSession: 收到暂停指令 (摘下耳机 / 媒体键暂停)",
+          );
           if (audioRef.current && isPlaying) {
             audioRef.current.pause();
             setPlaying(false);
           }
+        });
+
+        navigator.mediaSession.setActionHandler("stop", () => {
+          if (audioRef.current) {
+            audioRef.current.pause();
+            setPlaying(false);
+          }
+        });
+
+        navigator.mediaSession.setActionHandler("seekbackward", (details) => {
+          if (audioRef.current) {
+            const skipTime = details.seekOffset || 5;
+            audioRef.current.currentTime = Math.max(
+              0,
+              audioRef.current.currentTime - skipTime,
+            );
+          }
+        });
+
+        navigator.mediaSession.setActionHandler("seekforward", (details) => {
+          if (audioRef.current) {
+            const skipTime = details.seekOffset || 5;
+            audioRef.current.currentTime = Math.min(
+              audioRef.current.duration || 0,
+              audioRef.current.currentTime + skipTime,
+            );
+          }
+        });
+
+        navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+      } catch (e) {
+        console.warn("Failed to configure MediaSession:", e);
+      }
+    }
+
+    let deviceCheckTimeout: any = null;
+
+    // 检查设备是否可用并检测耳机拔出/断开
+    const checkDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const currentOutputs = devices
+          .filter((device) => device.kind === "audiooutput")
+          .map((d) => ({
+            id: d.deviceId,
+            label: d.label || "",
+            groupId: d.groupId || "",
+          }));
+
+        const previousOutputs = knownAudioOutputsRef.current;
+
+        if (
+          hasInitializedDevicesRef.current &&
+          previousOutputs.length > 0 &&
+          (settings.pauseOnHeadphoneDisconnect ?? true)
+        ) {
+          const currentIds = new Set(currentOutputs.map((d) => d.id));
+          const currentLabels = new Set(
+            currentOutputs.map((d) => d.label).filter(Boolean),
+          );
+
+          // 检查是否有先前的音频输出设备已丢失
+          const removedDevices = previousOutputs.filter((prev) => {
+            if (prev.id && prev.id !== "default") {
+              return !currentIds.has(prev.id);
+            }
+            if (prev.label) {
+              return !currentLabels.has(prev.label);
+            }
+            return false;
+          });
+
+          const deviceCountDecreased =
+            currentOutputs.length < previousOutputs.length;
+          const currentSelectedGone =
+            settings.audioDeviceId &&
+            settings.audioDeviceId !== "default" &&
+            !currentIds.has(settings.audioDeviceId);
+
+          const shouldPause =
+            removedDevices.length > 0 ||
+            deviceCountDecreased ||
+            currentSelectedGone;
+
+          if (shouldPause) {
+            console.log(
+              "🎧 检测到耳机/音频输出设备断开或拔出，正在自动暂停播放...",
+              {
+                removedDevices,
+                oldCount: previousOutputs.length,
+                newCount: currentOutputs.length,
+              },
+            );
+
+            if (audioRef.current && !audioRef.current.paused) {
+              audioRef.current.pause();
+              setPlaying(false);
+            } else if (isPlaying) {
+              setPlaying(false);
+            }
+          }
         }
 
-        lastDeviceCount = currentDeviceCount;
+        knownAudioOutputsRef.current = currentOutputs;
+        hasInitializedDevicesRef.current = true;
       } catch (e) {
         console.error("Error checking audio devices:", e);
       }
@@ -848,11 +984,11 @@ function App() {
 
     // 监听设备变化事件
     const handleDeviceChange = () => {
-      // 延迟检查，避免频繁触发
+      checkDevices();
       if (deviceCheckTimeout) {
         clearTimeout(deviceCheckTimeout);
       }
-      deviceCheckTimeout = setTimeout(checkDevices, 500);
+      deviceCheckTimeout = setTimeout(checkDevices, 300);
     };
 
     navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
@@ -868,9 +1004,6 @@ function App() {
 
     if (audio) {
       audio.addEventListener("error", handleAudioError);
-      // Note: Removed 'suspend' event listener as it incorrectly interferes with playback state.
-      // The 'suspend' event fires when the browser pauses data loading (e.g., buffering),
-      // which doesn't mean playback has stopped. Use 'play' and 'pause' events instead.
     }
 
     return () => {
@@ -885,7 +1018,14 @@ function App() {
         audio.removeEventListener("error", handleAudioError);
       }
     };
-  }, [isPlaying, setPlaying, audioPath]);
+  }, [
+    isPlaying,
+    setPlaying,
+    audioPath,
+    musicInfo,
+    settings.audioDeviceId,
+    settings.pauseOnHeadphoneDisconnect,
+  ]);
 
   // Fetch channels on mount
   useEffect(() => {

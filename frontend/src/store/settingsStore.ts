@@ -10,6 +10,7 @@ interface PlayerSettings {
   shadowOpacity: number;
   showDesktopLyric: boolean;
   loop: boolean;
+  pauseOnHeadphoneDisconnect: boolean;
   lyricOffset: number; // in seconds, can be positive or negative
   audioDeviceId: string;
   apiUrl: string;
@@ -34,6 +35,7 @@ export const useSettingsStore = create<SettingsState>()(
       shadowOpacity: 0.1,
       showDesktopLyric: true,
       loop: false,
+      pauseOnHeadphoneDisconnect: true,
       lyricOffset: 0,
       audioDeviceId: 'default',
       apiUrl: 'http://104.224.153.178:58081',

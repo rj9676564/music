@@ -11,7 +11,10 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:mac-local": "electron-builder --mac --arm64 --publish never"
+    "build:mac": "pnpm run build && electron-builder --mac --arm64",
+    "build:mac-local": "pnpm run build && electron-builder --mac --arm64 --publish never",
+    "build:win": "pnpm run build && electron-builder --win",
+    "build:linux": "pnpm run build && electron-builder --linux"
   },
   "dependencies": {
     "axios": "^1.13.2",
