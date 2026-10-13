@@ -146,7 +146,7 @@ func parseTranslatedBatch(output string) map[int]string {
 	return result
 }
 
-func translateBatch(cfg llmConfig, targetLang string, batch []srtCue) (map[int]string, error) {
+func translateBatch(cfg llmConfig, targetLang, customPrompt string, batch []srtCue) (map[int]string, error) {
 	var prompt strings.Builder
 	for i, cue := range batch {
 		prompt.WriteString(strconv.Itoa(i + 1))
@@ -155,14 +155,19 @@ func translateBatch(cfg llmConfig, targetLang string, batch []srtCue) (map[int]s
 		prompt.WriteString("\n")
 	}
 
-	systemPrompt := fmt.Sprintf(
-		"You are a professional subtitle translator. Translate every numbered line into %s. "+
-			"Rules: keep the exact same numbering and line count, one translation per line, "+
-			"never merge or split lines, never add explanations or extra text. "+
-			"If a line is already in %s, output it unchanged. "+
-			"Output format: `<number>. <translation>`",
-		targetLang, targetLang,
-	)
+	systemPrompt := strings.TrimSpace(customPrompt)
+	if systemPrompt == "" {
+		systemPrompt = fmt.Sprintf(
+			"You are a professional subtitle translator. Translate every numbered line into %s. "+
+				"Rules: keep the exact same numbering and line count, one translation per line, "+
+				"never merge or split lines, never add explanations or extra text. "+
+				"If a line is already in %s, output it unchanged. "+
+				"Output format: `<number>. <translation>`",
+			targetLang, targetLang,
+		)
+	} else if strings.Contains(systemPrompt, "%s") {
+		systemPrompt = fmt.Sprintf(systemPrompt, targetLang)
+	}
 
 	output, err := callLLMChat(cfg, systemPrompt, prompt.String(), translateTimeout)
 	if err != nil {
@@ -172,7 +177,7 @@ func translateBatch(cfg llmConfig, targetLang string, batch []srtCue) (map[int]s
 }
 
 // translateSRT 逐批翻译字幕文本，缺失的条目回落为原文，保证时间轴始终完整
-func translateSRT(srtContent, targetLang string, cfg llmConfig) (string, error) {
+func translateSRT(srtContent, targetLang, customPrompt string, cfg llmConfig) (string, error) {
 	cues := parseSRT(srtContent)
 	if len(cues) == 0 {
 		return "", fmt.Errorf("no subtitle cues found")
@@ -186,7 +191,7 @@ func translateSRT(srtContent, targetLang string, cfg llmConfig) (string, error) 
 	failedBatches := 0
 
 	for _, batch := range batches {
-		texts, err := translateBatch(cfg, targetLang, batch)
+		texts, err := translateBatch(cfg, targetLang, customPrompt, batch)
 		if err != nil {
 			log.Printf("⚠️ Translate batch failed: %v", err)
 			failedBatches++

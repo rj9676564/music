@@ -38,7 +38,7 @@ func parseLRC(content string) []lrcLine {
 
 // translateLRC 只翻译歌词文本，时间标签与元信息行原样保留；
 // 某一批失败时对应行回落为原文，全部失败才返回错误
-func translateLRC(lrcContent, targetLang string, cfg llmConfig) (string, error) {
+func translateLRC(lrcContent, targetLang, customPrompt string, cfg llmConfig) (string, error) {
 	lines := parseLRC(lrcContent)
 
 	cues := []srtCue{}
@@ -61,7 +61,7 @@ func translateLRC(lrcContent, targetLang string, cfg llmConfig) (string, error) 
 	failedBatches := 0
 	offset := 0
 	for _, batch := range batches {
-		texts, err := translateBatch(cfg, targetLang, batch)
+		texts, err := translateBatch(cfg, targetLang, customPrompt, batch)
 		if err != nil {
 			log.Printf("⚠️ Translate LRC batch failed: %v", err)
 			failedBatches++

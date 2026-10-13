@@ -35,8 +35,9 @@ RUN apk add --no-cache ca-certificates libc6-compat
 # Create data and media directories
 RUN mkdir -p pb_data media_cache
 
-# Copy the binary from builder
+# Copy the binary and html assets from builder
 COPY --from=builder /app/main .
+COPY --from=builder /app/*.html ./
 
 EXPOSE 8080
 

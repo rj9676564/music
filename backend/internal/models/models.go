@@ -46,3 +46,43 @@ type TranscriptionJob struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
+
+type Config struct {
+	ID          string    `json:"id"`
+	Key         string    `json:"key"`
+	Value       string    `json:"value"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Subtitle struct {
+	ID          string    `json:"id"`
+	EpisodeGUID string    `json:"episode_guid"`
+	Type        string    `json:"type"` // "srt" | "lrc"
+	Content     string    `json:"content"`
+	Status      string    `json:"status"` // "pending" | "completed" | "failed"
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Translation struct {
+	ID          string    `json:"id"`
+	EpisodeGUID string    `json:"episode_guid"`
+	SourceType  string    `json:"source_type"` // "srt" | "lrc"
+	TargetLang  string    `json:"target_lang"` // "zh-CN", "en", etc.
+	Content     string    `json:"content"`
+	Model       string    `json:"model"`
+	Status      string    `json:"status"` // "pending" | "completed" | "failed"
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Summary struct {
+	ID          string    `json:"id"`
+	EpisodeGUID string    `json:"episode_guid"`
+	Content     string    `json:"content"`
+	Model       string    `json:"model"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

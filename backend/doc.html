@@ -724,6 +724,71 @@
                 </div>
                 <div class="api-desc">异步转录队列任务。手动触发，完成后会自动推送至 missing-srt 列表。</div>
             </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/configs</span>
+                    <span class="badge badge-new">NEW</span>
+                </div>
+                <div class="api-desc">获取系统配置（包含 AI 摘要模型和 AI 翻译模型的 API 密钥、基础地址、模型名及提示词等）。</div>
+                <div class="code-block">
+                    <div class="code-label">Response</div>
+                    <pre>{
+  "success": true,
+  "data": {
+    "llm_summary": {
+      "apiKey": "sk-...",
+      "apiBase": "https://api.openai.com/v1",
+      "model": "gpt-3.5-turbo",
+      "prompt": "Summary: "
+    },
+    "llm_translate": {
+      "apiKey": "sk-...",
+      "apiBase": "https://api.openai.com/v1",
+      "model": "gpt-3.5-turbo",
+      "targetLang": "中文",
+      "autoTranslate": true
+    }
+  }
+}</pre>
+                </div>
+            </div>
+
+            <div class="api-card">
+                <button class="copy-curl-btn" onclick="copyAsCurl(this)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    复制 cURL
+                </button>
+                <div class="api-header">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/configs</span>
+                    <span class="badge badge-new">NEW</span>
+                </div>
+                <div class="api-desc">更新系统配置（持久化存储到 configs 表）。支持单独或同时更新 summary 与 translate。</div>
+                <div class="code-block">
+                    <div class="code-label">Request Body</div>
+                    <pre class="body-sample">{
+  "llm_summary": {
+    "apiKey": "sk-...",
+    "apiBase": "https://api.moonshot.cn/v1",
+    "model": "moonshot-v1-8k",
+    "prompt": "Summary: "
+  },
+  "llm_translate": {
+    "apiKey": "sk-...",
+    "apiBase": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "targetLang": "中文",
+    "autoTranslate": true
+  }
+}</pre>
+                </div>
+            </div>
         </section>
 
         <section id="config">

@@ -37,6 +37,11 @@ func main() {
 			return nil
 		})
 
+		e.Router.GET("/admin", func(e *core.RequestEvent) error {
+			http.ServeFile(e.Response, e.Request, "admin.html")
+			return nil
+		})
+
 		e.Router.GET("/media/{path...}", apis.Static(os.DirFS("./media_cache"), true))
 
 		// --- API 兼容层 ---
@@ -310,6 +315,32 @@ func main() {
 			})
 		})
 
+		// 系统配置获取 (翻译模型、摘要模型等)
+		e.Router.GET("/api/configs", func(e *core.RequestEvent) error {
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"data":    getAppConfigs(app),
+			})
+		})
+
+		// 系统配置保存
+		e.Router.POST("/api/configs", func(e *core.RequestEvent) error {
+			var body struct {
+				LLMSummary   *LLMConfigItem `json:"llm_summary"`
+				LLMTranslate *LLMConfigItem `json:"llm_translate"`
+			}
+			if err := e.BindBody(&body); err != nil {
+				return err
+			}
+			if err := updateAppConfigs(app, body.LLMSummary, body.LLMTranslate); err != nil {
+				return apis.NewBadRequestError("Failed to update configs", err)
+			}
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"data":    getAppConfigs(app),
+			})
+		})
+
 		// 保存 SRT (兼容旧接口)
 		e.Router.POST("/api/save-srt", func(e *core.RequestEvent) error {
 			var data struct {
@@ -354,6 +385,7 @@ func main() {
 			if err := app.Save(record); err != nil {
 				return apis.NewBadRequestError("Failed to save LRC", err)
 			}
+			_ = saveSubtitleRecord(app, data.GUID, "lrc", data.LrcContent, "completed")
 
 			go autoTranslateLRC(app, data.GUID, data.LrcContent)
 
@@ -575,7 +607,7 @@ func main() {
 				})
 			}
 
-			summary, err := callLLMForSummary(data.SrtContent, data.APIKey, data.APIBase, data.Model)
+			summary, err := callLLMForSummary(app, data.SrtContent, data.APIKey, data.APIBase, data.Model)
 			if err != nil {
 				return apis.NewBadRequestError("Summary failed", err)
 			}
@@ -584,6 +616,7 @@ func main() {
 				record.Set("summary", summary)
 				app.Save(record)
 			}
+			_ = saveSummaryRecord(app, data.GUID, summary, "")
 
 			return e.JSON(http.StatusOK, map[string]interface{}{
 				"success": true,
@@ -591,7 +624,7 @@ func main() {
 			})
 		})
 
-		// 歌词/字幕翻译：LLM 密钥只保存在服务端环境变量，客户端不传也不需要知道
+		// 歌词/字幕翻译：服务端统一配置模型与密钥
 		e.Router.POST("/api/translate", func(e *core.RequestEvent) error {
 			var data struct {
 				GUID       string `json:"guid"`
@@ -603,40 +636,59 @@ func main() {
 				return err
 			}
 
-			// 目标语言由服务端统一决定（TRANSLATE_TARGET_LANG），
-			// 保证全站只翻一份、所有客户端复用同一译文
-			targetLang := defaultTranslateLang()
-			if reqLang := strings.TrimSpace(data.TargetLang); reqLang != "" && reqLang != targetLang {
-				return apis.NewBadRequestError(
-					fmt.Sprintf("targetLang must be %q (configured server-side via TRANSLATE_TARGET_LANG)", targetLang), nil)
+			// 目标语言优先由 configs 表统一决定，也可按请求参数指定
+			_, defaultTargetLang, _, _, _ := resolveTranslateLLMConfig(app)
+			targetLang := defaultTargetLang
+			if reqLang := strings.TrimSpace(data.TargetLang); reqLang != "" {
+				targetLang = reqLang
 			}
 
 			record, _ := app.FindFirstRecordByData("episodes", "guid", data.GUID)
 
 			// 命中缓存：同一目标语言且已有译文时直接返回
-			if !data.Force && record != nil && record.GetString("translation") != "" &&
-				record.GetString("translation_lang") == targetLang {
-				return e.JSON(http.StatusOK, map[string]interface{}{
-					"success":     true,
-					"translation": record.GetString("translation"),
-					"targetLang":  targetLang,
-					"cached":      true,
-				})
+			if !data.Force && record != nil {
+				if record.GetString("translation") != "" && record.GetString("translation_lang") == targetLang {
+					return e.JSON(http.StatusOK, map[string]interface{}{
+						"success":     true,
+						"translation": record.GetString("translation"),
+						"targetLang":  targetLang,
+						"cached":      true,
+					})
+				}
+				if record.GetString("lrc_translation") != "" && record.GetString("lrc_translation_lang") == targetLang {
+					return e.JSON(http.StatusOK, map[string]interface{}{
+						"success":     true,
+						"translation": record.GetString("lrc_translation"),
+						"targetLang":  targetLang,
+						"cached":      true,
+					})
+				}
 			}
 
 			srtContent := data.SrtContent
 			if strings.TrimSpace(srtContent) == "" && record != nil {
 				srtContent = record.GetString("srt_content")
 			}
-			if strings.TrimSpace(srtContent) == "" {
-				return apis.NewBadRequestError("srtContent is required", nil)
+			lrcContent := ""
+			if record != nil {
+				lrcContent = record.GetString("lrc_content")
+			}
+
+			if strings.TrimSpace(srtContent) == "" && strings.TrimSpace(lrcContent) == "" {
+				return apis.NewBadRequestError("srtContent or lrcContent is required", nil)
 			}
 
 			// 翻译一集要几十次 LLM 调用、耗时数分钟，同步返回必然被反向代理
 			// 判超时（nginx 默认 60s）。这里只登记任务并立刻返回 202，
-			// 客户端轮询 translation_status 获取结果。
-			if err := startTranslation(app, data.GUID, srtContent, targetLang); err != nil {
-				return apis.NewBadRequestError("Translate failed", err)
+			// 客户端轮询 translation_status / lrc_translation_status 获取结果。
+			if strings.TrimSpace(srtContent) != "" {
+				if err := startTranslation(app, data.GUID, srtContent, targetLang); err != nil {
+					return apis.NewBadRequestError("Translate failed", err)
+				}
+			} else {
+				go func() {
+					_ = startLRCTranslation(app, data.GUID, lrcContent, targetLang)
+				}()
 			}
 
 			return e.JSON(http.StatusAccepted, map[string]interface{}{
@@ -920,6 +972,7 @@ func completeTranscriptionJob(app *pocketbase.PocketBase, guid, srtContent strin
 		ep.Set("transcription_status", "completed")
 		_ = app.Save(ep)
 	}
+	_ = saveSubtitleRecord(app, guid, "srt", srtContent, "completed")
 
 	// 2. 更新 transcription_jobs
 	job, err := app.FindFirstRecordByData("transcription_jobs", "episode_guid", guid)
@@ -978,8 +1031,8 @@ func failTranscriptionJob(app *pocketbase.PocketBase, guid, errorMessage string)
 	return nil
 }
 
-func callLLMForSummary(content, customKey, customBase, customModel string) (string, error) {
-	cfg, err := resolveLLMConfig(customKey, customBase, customModel)
+func callLLMForSummary(app *pocketbase.PocketBase, content, customKey, customBase, customModel string) (string, error) {
+	cfg, promptPrefix, err := resolveSummaryLLMConfig(app, customKey, customBase, customModel)
 	if err != nil {
 		return "", err
 	}
@@ -989,7 +1042,11 @@ func callLLMForSummary(content, customKey, customBase, customModel string) (stri
 		text = text[:8000]
 	}
 
-	return callLLMChat(cfg, "", "Summary: "+text, 60*time.Second)
+	if promptPrefix == "" {
+		promptPrefix = "Summary: "
+	}
+
+	return callLLMChat(cfg, "", promptPrefix+text, 60*time.Second)
 }
 
 // translateInflight 保证同一集同时只有一个翻译任务，
@@ -999,9 +1056,12 @@ var translateInflight sync.Map
 // startTranslation 登记一集的后台翻译任务并立即返回。
 // 已在翻译中、或已有同语言译文时直接跳过，不视为错误。
 func startTranslation(app *pocketbase.PocketBase, guid, srtContent, targetLang string) error {
-	cfg, err := resolveLLMConfig("", "", "")
+	cfg, defaultLang, customPrompt, _, err := resolveTranslateLLMConfig(app)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(targetLang) == "" {
+		targetLang = defaultLang
 	}
 	if strings.TrimSpace(guid) == "" {
 		return fmt.Errorf("guid is required")
@@ -1029,7 +1089,7 @@ func startTranslation(app *pocketbase.PocketBase, guid, srtContent, targetLang s
 		defer translateInflight.Delete(guid)
 
 		log.Printf("🌐 Translating episode %s -> %s", guid, targetLang)
-		translation, translateErr := translateSRT(srtContent, targetLang, cfg)
+		translation, translateErr := translateSRT(srtContent, targetLang, customPrompt, cfg)
 
 		// 重新拉取记录，避免覆盖翻译期间的其他写入
 		rec, findErr := app.FindFirstRecordByData("episodes", "guid", guid)
@@ -1051,6 +1111,7 @@ func startTranslation(app *pocketbase.PocketBase, guid, srtContent, targetLang s
 			log.Printf("❌ Translate failed to save (%s): %v", guid, err)
 			return
 		}
+		_ = saveTranslationRecord(app, guid, "srt", targetLang, translation, cfg.Model, "completed")
 		log.Printf("✅ Translate completed for %s", guid)
 	}()
 
@@ -1060,9 +1121,12 @@ func startTranslation(app *pocketbase.PocketBase, guid, srtContent, targetLang s
 // startLRCTranslation 后台翻译一集的 LRC，结果写入 episodes.lrc_translation。
 // 与 SRT 翻译共用 translateInflight（key 加 lrc: 前缀），同一集同时只跑一个任务。
 func startLRCTranslation(app *pocketbase.PocketBase, guid, lrcContent, targetLang string) error {
-	cfg, err := resolveLLMConfig("", "", "")
+	cfg, defaultLang, customPrompt, _, err := resolveTranslateLLMConfig(app)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(targetLang) == "" {
+		targetLang = defaultLang
 	}
 	key := "lrc:" + guid
 	if _, running := translateInflight.LoadOrStore(key, struct{}{}); running {
@@ -1082,7 +1146,7 @@ func startLRCTranslation(app *pocketbase.PocketBase, guid, lrcContent, targetLan
 	}
 
 	log.Printf("🌐 Translating LRC %s -> %s", guid, targetLang)
-	translation, translateErr := translateLRC(lrcContent, targetLang, cfg)
+	translation, translateErr := translateLRC(lrcContent, targetLang, customPrompt, cfg)
 
 	// 重新拉取记录，避免覆盖翻译期间的其他写入
 	rec, findErr := app.FindFirstRecordByData("episodes", "guid", guid)
@@ -1104,26 +1168,35 @@ func startLRCTranslation(app *pocketbase.PocketBase, guid, lrcContent, targetLan
 	if err := app.Save(rec); err != nil {
 		return err
 	}
+	_ = saveTranslationRecord(app, guid, "lrc", targetLang, translation, cfg.Model, "completed")
 	log.Printf("✅ LRC translate completed for %s", guid)
 	return nil
 }
 
 // autoTranslateLRC 在 LRC 保存后自动翻译，失败只记录日志
 func autoTranslateLRC(app *pocketbase.PocketBase, guid, lrcContent string) {
-	if !autoTranslateEnabled() {
+	_, targetLang, _, autoTranslate, err := resolveTranslateLLMConfig(app)
+	if !autoTranslate || err != nil {
+		if err != nil {
+			log.Printf("⏭️ Auto LRC translate skipped (%s): %v", guid, err)
+		}
 		return
 	}
-	if err := startLRCTranslation(app, guid, lrcContent, defaultTranslateLang()); err != nil {
+	if err := startLRCTranslation(app, guid, lrcContent, targetLang); err != nil {
 		log.Printf("❌ Auto LRC translate failed (%s): %v", guid, err)
 	}
 }
 
 // autoTranslateEpisode 在转录完成后自动翻译，失败只记录日志不影响转录流程
 func autoTranslateEpisode(app *pocketbase.PocketBase, guid, srtContent string) {
-	if !autoTranslateEnabled() {
+	_, targetLang, _, autoTranslate, err := resolveTranslateLLMConfig(app)
+	if !autoTranslate || err != nil {
+		if err != nil {
+			log.Printf("⏭️ Auto translate skipped (%s): %v", guid, err)
+		}
 		return
 	}
-	if err := startTranslation(app, guid, srtContent, defaultTranslateLang()); err != nil {
+	if err := startTranslation(app, guid, srtContent, targetLang); err != nil {
 		log.Printf("⏭️ Auto translate skipped (%s): %v", guid, err)
 	}
 }
@@ -1530,4 +1603,15 @@ func ensureCollections(app *pocketbase.PocketBase) {
 
 	// 4. 确保 transcription_jobs 表存在
 	ensureTranscriptionJobsCollection(app)
+
+	// 5. 确保 configs 表存在
+	ensureConfigsCollection(app)
+
+	// 6. 确保拆分后的 subtitles, translations, summaries 集合存在
+	ensureSubtitlesCollection(app)
+	ensureTranslationsCollection(app)
+	ensureSummariesCollection(app)
+
+	// 7. 增量回填 episodes 存量数据到新子表
+	migrateEpisodeArtifactsToSubTables(app)
 }

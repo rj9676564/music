@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Molten Music - 管理控制台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(22, 30, 46, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(30, 41, 59, 0.85);
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-glow: rgba(99, 102, 241, 0.25);
+      --accent: #06b6d4;
+      --accent-glow: rgba(6, 182, 212, 0.2);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --code-bg: #050811;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at 15% 15%, #18223c 0%, var(--bg) 50%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      background: rgba(11, 15, 25, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0.85rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 700;
+      font-size: 1.15rem;
+      background: linear-gradient(135deg, #a5b4fc, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-decoration: none;
+    }
+    .brand svg { width: 28px; height: 28px; }
+    .nav-tabs {
+      display: flex;
+      gap: 0.5rem;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+    }
+    .nav-tab {
+      padding: 0.45rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: all 0.2s;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+
+    .header-links {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .btn-link {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+      transition: all 0.2s;
+    }
+    .btn-link:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+    /* Layout */
+    main {
+      flex: 1;
+      max-width: 1300px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.75rem 1.5rem 3rem;
+    }
+    .section-panel { display: none; }
+    .section-panel.active { display: block; animation: fadeIn 0.25s ease; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #e2e8f0;
+    }
+    .card-subtitle {
+      font-size: 0.825rem;
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+    }
+
+    /* Form & Input */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .form-group label {
+      font-size: 0.825rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .form-control {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.9rem;
+      color: var(--text);
+      outline: none;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .form-control:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+    .form-control.code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+    .form-hint {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      box-shadow: 0 2px 8px var(--primary-glow);
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--card-border);
+      color: var(--text);
+    }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
+    .btn-success { background: #059669; color: white; }
+    .btn-success:hover { background: #047857; }
+    .btn-warning { background: #d97706; color: white; }
+    .btn-warning:hover { background: #b45309; }
+    .btn-sm {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.775rem;
+      border-radius: 6px;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.18rem 0.55rem;
+      font-size: 0.725rem;
+      font-weight: 600;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .badge-completed { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-failed { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-none { background: rgba(148, 163, 184, 0.1); color: var(--text-dim); border: 1px solid rgba(148, 163, 184, 0.2); }
+
+    /* Filter Toolbar */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .search-box {
+      flex: 1;
+      min-width: 260px;
+      position: relative;
+    }
+
+    /* Table */
+    .table-responsive {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    th {
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--card-border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+      vertical-align: middle;
+    }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+    .td-title {
+      max-width: 280px;
+      font-weight: 500;
+      color: #f1f5f9;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .actions-cell {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+
+    /* Toast Notification */
+    #toast-container {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .toast {
+      background: rgba(22, 30, 46, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 0.75rem 1.25rem;
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      animation: slideIn 0.2s ease;
+      min-width: 240px;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .toast.success { border-left: 4px solid var(--success); }
+    .toast.error { border-left: 4px solid var(--danger); }
+    .toast.info { border-left: 4px solid var(--accent); }
+
+    /* Modal / Drawer */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-content {
+      background: #111827;
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      max-width: 800px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    .modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--card-border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+    }
+    .text-preview {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      max-height: 350px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+
+    /* Switch */
+    .switch-label {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .switch-input { display: none; }
+    .switch-slider {
+      width: 38px;
+      height: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      position: relative;
+      transition: all 0.2s;
+    }
+    .switch-slider::before {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 3px;
+      top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+    .switch-input:checked + .switch-slider {
+      background: var(--primary);
+    }
+    .switch-input:checked + .switch-slider::before {
+      transform: translateX(18px);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <a href="/admin" class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 18V5l12-2v13"></path>
+        <circle cx="6" cy="18" r="3"></circle>
+        <circle cx="18" cy="16" r="3"></circle>
+      </svg>
+      Molten Admin
+    </a>
+
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('episodes')">🎙️ 单集与歌词管理</button>
+      <button class="nav-tab" onclick="switchTab('llm')">⚙️ LLM 参数设置</button>
+      <button class="nav-tab" onclick="switchTab('channels')">📡 频道与转录</button>
+    </div>
+
+    <div class="header-links">
+      <a href="/doc" target="_blank" class="btn-link">📖 API 文档</a>
+      <a href="/_/" target="_blank" class="btn-link">🗄️ PocketBase</a>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main>
+
+    <!-- 1. 单集与字幕/歌词管理面板 -->
+    <section id="panel-episodes" class="section-panel active">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">🎙️ 单集歌词与翻译控制台</h2>
+            <p class="card-subtitle">支持搜索节目、手动触发字幕/歌词翻译、生成 AI 摘要及查看转录结果</p>
+          </div>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="fetchEpisodes()">🔄 刷新列表</button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-box">
+            <input type="text" id="episode-search" class="form-control" placeholder="🔍 搜索标题、GUID..." onkeyup="filterEpisodes()">
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <select id="channel-filter" class="form-control" style="width: 220px;" onchange="onChannelSelect()">
+              <option value="">全部频道 (All Channels)</option>
+            </select>
+            <select id="status-filter" class="form-control" style="width: 150px;" onchange="filterEpisodes()">
+              <option value="">全部状态</option>
+              <option value="trans_completed">转录已完成</option>
+              <option value="trans_pending">转录处理中</option>
+              <option value="trans_none">未转录</option>
+              <option value="trans_failed">转录失败</option>
+              <option value="tl_completed">翻译已完成</option>
+              <option value="tl_none">未翻译</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 320px;">节目名称</th>
+                <th>转录状态</th>
+                <th>翻译状态</th>
+                <th>字幕/歌词类型</th>
+                <th>AI 摘要</th>
+                <th style="text-align: right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="episodes-table-body">
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-dim);">
+                  正在加载数据...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. LLM 模型参数设置 (持久化存储到 configs 表) -->
+    <section id="panel-llm" class="section-panel">
+      <!-- 翻译配置 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">🌐 AI 翻译模型配置 (llm_translate)</h2>
+            <p class="card-subtitle">持久化存储至 configs 表，用于 SRT 字幕与 LRC 歌词的多语言翻译</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="saveLLMConfigsToServer()">💾 保存配置到服务端</button>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>API Base URL</label>
+            <input type="text" id="cfg-trans-base" class="form-control code" placeholder="https://api.openai.com/v1">
+            <span class="form-hint">例如 https://dashscope.aliyuncs.com/compatible-mode/v1 或 https://api.deepseek.com/v1</span>
+          </div>
+
+          <div class="form-group">
+            <label>API Key (密钥)</label>
+            <input type="password" id="cfg-trans-key" class="form-control code" placeholder="sk-...">
+            <span class="form-hint">留空使用环境变量 OPENAI_API_KEY</span>
+          </div>
+
+          <div class="form-group">
+            <label>Model 名称</label>
+            <input type="text" id="cfg-trans-model" class="form-control code" placeholder="gpt-4o-mini / qwen-plus / deepseek-chat">
+            <span class="form-hint">推荐使用轻量高速模型，成本低且响应快</span>
+          </div>
+
+          <div class="form-group">
+            <label>目标语言 (Target Language)</label>
+            <input type="text" id="cfg-trans-lang" class="form-control" placeholder="中文">
+            <span class="form-hint">默认统一翻译为中文</span>
+          </div>
+
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label>自定义翻译 Prompt (System Prompt)</label>
+            <textarea id="cfg-trans-prompt" class="form-control code" rows="2" placeholder="留空使用系统内置专业字幕/歌词翻译指令（支持 %s 占位符表示目标语言）"></textarea>
+            <span class="form-hint">自定义 System Prompt，留空默认：You are a professional subtitle translator. Translate every numbered line into %s...</span>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center;">
+          <label class="switch-label">
+            <input type="checkbox" id="cfg-trans-auto" class="switch-input" checked>
+            <span class="switch-slider"></span>
+            <span style="font-size: 0.85rem; font-weight: 500;">开启自动翻译 (Auto Translate)</span>
+          </label>
+
+          <button class="btn btn-secondary btn-sm" onclick="testTranslateConnection()">⚡️ 测试翻译模型</button>
+        </div>
+      </div>
+
+      <!-- 摘要配置 -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">📝 AI 摘要模型配置 (llm_summary)</h2>
+            <p class="card-subtitle">持久化存储至 configs 表，用于单集音频与字幕的核心内容速览生成</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="saveLLMConfigsToServer()">💾 保存配置到服务端</button>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>API Base URL</label>
+            <input type="text" id="cfg-sum-base" class="form-control code" placeholder="https://api.openai.com/v1">
+            <span class="form-hint">例如 https://api.moonshot.cn/v1 或官方 OpenAI 端点</span>
+          </div>
+
+          <div class="form-group">
+            <label>API Key (密钥)</label>
+            <input type="password" id="cfg-sum-key" class="form-control code" placeholder="sk-...">
+            <span class="form-hint">留空使用环境变量 OPENAI_API_KEY</span>
+          </div>
+
+          <div class="form-group">
+            <label>Model 名称</label>
+            <input type="text" id="cfg-sum-model" class="form-control code" placeholder="gpt-4o-mini / moonshot-v1-8k">
+          </div>
+
+          <div class="form-group">
+            <label>自定义摘要 Prompt 前缀</label>
+            <input type="text" id="cfg-sum-prompt" class="form-control" placeholder="Summary: ">
+            <span class="form-hint">默认前缀为 "Summary: "，也可填写 "请用中文对以下播客内容生成一段结构化要点摘要："</span>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end;">
+          <button class="btn btn-secondary btn-sm" onclick="testSummaryConnection()">⚡️ 测试摘要模型</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 频道与转录大盘 -->
+    <section id="panel-channels" class="section-panel">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">📡 播客频道列表</h2>
+            <p class="card-subtitle">查看所有已订阅的 RSS 频道及自动转录开关配置</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="fetchChannels()">🔄 刷新频道</button>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>频道名称</th>
+                <th>作者</th>
+                <th>RSS 地址</th>
+                <th>自动转录</th>
+                <th style="text-align: right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="channels-table-body">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-dim);">
+                  正在加载频道...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: 内容详情与编辑/预览 -->
+  <div id="modal-preview" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title" style="font-size: 1rem; font-weight: 600;">字幕/歌词预览</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 0.75rem; display: flex; gap: 0.5rem;">
+          <button class="btn btn-secondary btn-sm active" id="btn-tab-srt" onclick="switchPreviewType('srt')">SRT 字幕</button>
+          <button class="btn btn-secondary btn-sm" id="btn-tab-lrc" onclick="switchPreviewType('lrc')">LRC 歌词</button>
+          <button class="btn btn-secondary btn-sm" id="btn-tab-trans" onclick="switchPreviewType('trans')">译文内容</button>
+          <button class="btn btn-secondary btn-sm" id="btn-tab-summary" onclick="switchPreviewType('summary')">AI 摘要</button>
+        </div>
+        <div id="modal-text" class="text-preview">无内容</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" onclick="copyModalContent()">📋 复制内容</button>
+        <button class="btn btn-primary btn-sm" onclick="closeModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 提示容器 -->
+  <div id="toast-container"></div>
+
+  <script>
+    // 全局状态
+    let channelsData = [];
+    let currentEpisodes = [];
+    let currentPreviewEpisode = null;
+    let currentPreviewType = 'srt';
+
+    // 本地存储的 LLM 配置
+    const LLM_STORAGE_KEY = 'molten_admin_llm_config';
+
+    function init() {
+      loadServerLLMConfigs();
+      fetchChannels();
+      fetchEpisodes();
+    }
+
+    // 选项卡切换
+    function switchTab(tabId) {
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.section-panel').forEach(el => el.classList.remove('active'));
+
+      event.currentTarget.classList.add('active');
+      const panel = document.getElementById(`panel-${tabId}`);
+      if (panel) panel.classList.add('active');
+    }
+
+    // Toast 提示
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerText = msg;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 250);
+      }, 3000);
+    }
+
+    // --- LLM 配置 (从 /api/configs 获取与持久化) ---
+    async function loadServerLLMConfigs() {
+      try {
+        const res = await fetch('/api/configs');
+        if (!res.ok) throw new Error('Failed to load configs');
+        const json = await res.json();
+        const cfg = json.data;
+        if (!cfg) return;
+
+        // 填充翻译模型
+        if (cfg.llm_translate) {
+          const t = cfg.llm_translate;
+          if (t.apiBase) document.getElementById('cfg-trans-base').value = t.apiBase;
+          if (t.apiKey) document.getElementById('cfg-trans-key').value = t.apiKey;
+          if (t.model) document.getElementById('cfg-trans-model').value = t.model;
+          if (t.targetLang) document.getElementById('cfg-trans-lang').value = t.targetLang;
+          if (t.prompt) document.getElementById('cfg-trans-prompt').value = t.prompt;
+          if (typeof t.autoTranslate === 'boolean') {
+            document.getElementById('cfg-trans-auto').checked = t.autoTranslate;
+          }
+        }
+
+        // 填充摘要模型
+        if (cfg.llm_summary) {
+          const s = cfg.llm_summary;
+          if (s.apiBase) document.getElementById('cfg-sum-base').value = s.apiBase;
+          if (s.apiKey) document.getElementById('cfg-sum-key').value = s.apiKey;
+          if (s.model) document.getElementById('cfg-sum-model').value = s.model;
+          if (s.prompt) document.getElementById('cfg-sum-prompt').value = s.prompt;
+        }
+      } catch (e) {
+        console.warn('获取服务端配置失败，可能表尚未同步:', e);
+      }
+    }
+
+    async function saveLLMConfigsToServer() {
+      const autoTranslate = document.getElementById('cfg-trans-auto').checked;
+      const payload = {
+        llm_translate: {
+          apiBase: document.getElementById('cfg-trans-base').value.trim(),
+          apiKey: document.getElementById('cfg-trans-key').value.trim(),
+          model: document.getElementById('cfg-trans-model').value.trim(),
+          targetLang: document.getElementById('cfg-trans-lang').value.trim() || '中文',
+          prompt: document.getElementById('cfg-trans-prompt').value.trim(),
+          autoTranslate: autoTranslate
+        },
+        llm_summary: {
+          apiBase: document.getElementById('cfg-sum-base').value.trim(),
+          apiKey: document.getElementById('cfg-sum-key').value.trim(),
+          model: document.getElementById('cfg-sum-model').value.trim(),
+          prompt: document.getElementById('cfg-sum-prompt').value.trim() || 'Summary: '
+        }
+      };
+
+      try {
+        const res = await fetch('/api/configs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('✅ 配置已持久化保存到 configs 数据表！', 'success');
+        } else {
+          showToast(`❌ 保存失败: ${data.message || ''}`, 'error');
+        }
+      } catch (err) {
+        showToast(`❌ 网络请求失败: ${err.message}`, 'error');
+      }
+    }
+
+    async function testTranslateConnection() {
+      showToast('正在测试翻译模型...', 'info');
+      try {
+        const res = await fetch('/api/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guid: 'test-trans-ping',
+            srtContent: '1\n00:00:00,000 --> 00:00:02,000\nTesting translation endpoint.',
+            apiKey: document.getElementById('cfg-trans-key').value.trim(),
+            apiBase: document.getElementById('cfg-trans-base').value.trim(),
+            model: document.getElementById('cfg-trans-model').value.trim()
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.summary) {
+          showToast('🎉 翻译端点连接成功！响应正常', 'success');
+        } else {
+          showToast(`❌ 翻译端点报错: ${data.message || '未知错误'}`, 'error');
+        }
+      } catch (err) {
+        showToast(`❌ 连接失败: ${err.message}`, 'error');
+      }
+    }
+
+    async function testSummaryConnection() {
+      showToast('正在测试摘要模型...', 'info');
+      try {
+        const res = await fetch('/api/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guid: 'test-sum-ping',
+            srtContent: '1\n00:00:00,000 --> 00:00:02,000\nTesting summary endpoint.',
+            apiKey: document.getElementById('cfg-sum-key').value.trim(),
+            apiBase: document.getElementById('cfg-sum-base').value.trim(),
+            model: document.getElementById('cfg-sum-model').value.trim()
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.summary) {
+          showToast('🎉 摘要端点连接成功！响应正常', 'success');
+        } else {
+          showToast(`❌ 摘要端点报错: ${data.message || '未知错误'}`, 'error');
+        }
+      } catch (err) {
+        showToast(`❌ 连接失败: ${err.message}`, 'error');
+      }
+    }
+
+    // --- 频道加载 ---
+    async function fetchChannels() {
+      try {
+        const res = await fetch('/api/channels');
+        if (!res.ok) throw new Error('Failed to fetch channels');
+        channelsData = await res.json();
+
+        // 渲染下拉框
+        const select = document.getElementById('channel-filter');
+        select.innerHTML = '<option value="">全部频道 (All Channels)</option>';
+        channelsData.forEach(ch => {
+          const opt = document.createElement('option');
+          opt.value = ch.id;
+          opt.innerText = ch.name || ch.title || '未命名频道';
+          select.appendChild(opt);
+        });
+
+        // 渲染表格
+        const tbody = document.getElementById('channels-table-body');
+        tbody.innerHTML = '';
+        channelsData.forEach(ch => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="font-weight: 500;">${ch.name || '未命名'}</td>
+            <td>${ch.author || '-'}</td>
+            <td><a href="${ch.rss}" target="_blank" style="color: var(--accent); text-decoration: none;">${ch.rss}</a></td>
+            <td>
+              <span class="badge ${ch.auto_convert ? 'badge-completed' : 'badge-none'}">
+                ${ch.auto_convert ? '已开启' : '关闭'}
+              </span>
+            </td>
+            <td style="text-align: right;">
+              <button class="btn btn-secondary btn-sm" onclick="toggleAutoConvert('${ch.id}', ${!ch.auto_convert})">
+                ${ch.auto_convert ? '关闭自动转录' : '开启自动转录'}
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function toggleAutoConvert(channelId, autoConvert) {
+      try {
+        const res = await fetch(`/api/channels/${channelId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auto_convert: autoConvert })
+        });
+        if (res.ok) {
+          showToast('✅ 频道配置已更新', 'success');
+          fetchChannels();
+        } else {
+          showToast('❌ 更新失败', 'error');
+        }
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    // --- 单集加载 ---
+    async function onChannelSelect() {
+      const channelId = document.getElementById('channel-filter').value;
+      if (!channelId) {
+        fetchEpisodes();
+        return;
+      }
+      try {
+        const res = await fetch(`/api/channels/${channelId}/episodes`);
+        if (!res.ok) throw new Error('Failed');
+        currentEpisodes = await res.json();
+        renderEpisodesTable(currentEpisodes);
+      } catch (e) {
+        showToast('获取单集失败', 'error');
+      }
+    }
+
+    async function fetchEpisodes() {
+      const tbody = document.getElementById('episodes-table-body');
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">正在加载单集列表...</td></tr>';
+      try {
+        const res = await fetch('/api/collections/episodes/records?perPage=100&sort=-created');
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        currentEpisodes = data.items || [];
+        renderEpisodesTable(currentEpisodes);
+      } catch (e) {
+        // fallback
+        if (channelsData.length > 0) {
+          onChannelSelect();
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--danger); padding: 2rem;">加载失败，请检查网络</td></tr>';
+        }
+      }
+    }
+
+    function renderEpisodesTable(episodes) {
+      const tbody = document.getElementById('episodes-table-body');
+      tbody.innerHTML = '';
+
+      if (!episodes || episodes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-dim);">暂无单集数据</td></tr>';
+        return;
+      }
+
+      episodes.forEach(ep => {
+        const tr = document.createElement('tr');
+
+        // 转录状态
+        const transStatus = ep.transcription_status || (ep.srt_content ? 'completed' : 'none');
+        // 翻译状态
+        const tlStatus = ep.translation_status || (ep.translation ? 'completed' : 'none');
+
+        // 字幕/歌词类型
+        const hasSrt = !!(ep.srt_content && ep.srt_content.trim());
+        const hasLrc = !!(ep.lrc_content && ep.lrc_content.trim());
+        let typeText = [];
+        if (hasSrt) typeText.push('SRT 字幕');
+        if (hasLrc) typeText.push('LRC 歌词');
+        const typeDisplay = typeText.length > 0 ? typeText.join(' + ') : '暂无';
+
+        tr.innerHTML = `
+          <td>
+            <div class="td-title" title="${ep.title || ''}">${ep.title || ep.guid || '未命名'}</div>
+            <div style="font-size: 0.725rem; color: var(--text-dim); font-family: monospace;">${ep.guid || ''}</div>
+          </td>
+          <td>
+            <span class="badge badge-${transStatus}">
+              ${transStatus}
+            </span>
+          </td>
+          <td>
+            <span class="badge badge-${tlStatus}">
+              ${tlStatus}
+            </span>
+          </td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${typeDisplay}</td>
+          <td>
+            <span style="font-size: 0.8rem; color: ${ep.summary ? 'var(--success)' : 'var(--text-dim)'};">
+              ${ep.summary ? '✅ 已生成' : '未生成'}
+            </span>
+          </td>
+          <td>
+            <div class="actions-cell" style="justify-content: flex-end;">
+              <button class="btn btn-secondary btn-sm" onclick="openPreview('${ep.id || ep.guid}')">👁 查看</button>
+              <button class="btn btn-secondary btn-sm" onclick="triggerTranscribe('${ep.guid}', '${ep.audio_url || ep.audioUrl}', '${ep.title}')">🎙 转录</button>
+              <button class="btn btn-primary btn-sm" onclick="triggerTranslate('${ep.guid}')">🌐 翻译</button>
+              <button class="btn btn-secondary btn-sm" onclick="triggerSummary('${ep.guid}')">📝 摘要</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterEpisodes() {
+      const q = document.getElementById('episode-search').value.toLowerCase().trim();
+      const status = document.getElementById('status-filter').value;
+
+      const filtered = currentEpisodes.filter(ep => {
+        const matchQ = !q || (ep.title && ep.title.toLowerCase().includes(q)) || (ep.guid && ep.guid.toLowerCase().includes(q));
+        if (!matchQ) return false;
+
+        if (status === 'trans_completed') return ep.transcription_status === 'completed' || !!ep.srt_content;
+        if (status === 'trans_pending') return ep.transcription_status === 'pending';
+        if (status === 'trans_failed') return ep.transcription_status === 'failed';
+        if (status === 'trans_none') return !ep.transcription_status && !ep.srt_content;
+        if (status === 'tl_completed') return ep.translation_status === 'completed' || !!ep.translation;
+        if (status === 'tl_none') return !ep.translation && ep.translation_status !== 'completed';
+
+        return true;
+      });
+
+      renderEpisodesTable(filtered);
+    }
+
+    // --- 业务操作 ---
+
+    // 1. 触发转录
+    async function triggerTranscribe(guid, audioUrl, title) {
+      if (!guid) return;
+      showToast(`正在将 [${title || guid}] 加入转录队列...`, 'info');
+      try {
+        const res = await fetch('/api/queue-transcription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guid, audioUrl, title })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('✅ 已成功加入后台转录队列！', 'success');
+        } else {
+          showToast(`❌ 转录提交失败: ${data.message || ''}`, 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    // 2. 触发翻译
+    async function triggerTranslate(guid) {
+      if (!guid) return;
+      showToast(`正在触发翻译任务: ${guid}...`, 'info');
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guid, force: true })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('✅ 翻译任务已启动（后台异步处理）', 'success');
+          // 局部更新状态
+          const target = currentEpisodes.find(e => e.guid === guid);
+          if (target) target.translation_status = 'pending';
+          filterEpisodes();
+        } else {
+          showToast(`❌ 翻译触发失败: ${data.message || ''}`, 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    // 3. 触发摘要
+    async function triggerSummary(guid) {
+      const ep = currentEpisodes.find(e => e.guid === guid);
+      if (!ep) return;
+      const srt = ep.srt_content;
+      if (!srt || !srt.trim()) {
+        showToast('该单集暂无字幕内容，无法生成摘要', 'error');
+        return;
+      }
+
+      const cfg = getLLMConfig();
+      showToast('正在调用 LLM 生成内容摘要...', 'info');
+
+      try {
+        const res = await fetch('/api/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guid: ep.guid,
+            srtContent: srt,
+            apiKey: cfg.apiKey,
+            apiBase: cfg.apiBase,
+            model: cfg.model
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.summary) {
+          showToast('🎉 摘要已成功生成！', 'success');
+          ep.summary = data.summary;
+          filterEpisodes();
+          openPreview(ep.id || ep.guid);
+          switchPreviewType('summary');
+        } else {
+          showToast(`❌ 摘要生成失败: ${data.message || ''}`, 'error');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    // --- 弹窗查看 ---
+    function openPreview(idOrGuid) {
+      const ep = currentEpisodes.find(e => e.id === idOrGuid || e.guid === idOrGuid);
+      if (!ep) return;
+      currentPreviewEpisode = ep;
+      document.getElementById('modal-title').innerText = `${ep.title || '单集详情'} (${ep.guid})`;
+      document.getElementById('modal-preview').classList.add('open');
+      switchPreviewType(currentPreviewType);
+    }
+
+    function closeModal() {
+      document.getElementById('modal-preview').classList.remove('open');
+    }
+
+    function switchPreviewType(type) {
+      currentPreviewType = type;
+      ['srt', 'lrc', 'trans', 'summary'].forEach(t => {
+        const btn = document.getElementById(`btn-tab-${t}`);
+        if (btn) btn.classList.toggle('active', t === type);
+      });
+
+      const ep = currentPreviewEpisode;
+      const textEl = document.getElementById('modal-text');
+      if (!ep) { textEl.innerText = '未选择单集'; return; }
+
+      if (type === 'srt') {
+        textEl.innerText = ep.srt_content || '(暂无 SRT 字幕)';
+      } else if (type === 'lrc') {
+        textEl.innerText = ep.lrc_content || '(暂无 LRC 歌词)';
+      } else if (type === 'trans') {
+        textEl.innerText = ep.translation || ep.lrc_translation || '(暂无翻译结果)';
+      } else if (type === 'summary') {
+        textEl.innerText = ep.summary || '(暂无内容摘要)';
+      }
+    }
+
+    function copyModalContent() {
+      const text = document.getElementById('modal-text').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('📋 已复制到剪贴板', 'success');
+      });
+    }
+
+    // 页面初始化
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
