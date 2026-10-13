@@ -281,3 +281,137 @@ func migrateEpisodeArtifactsToSubTables(app *pocketbase.PocketBase) {
 		log.Printf("📦 Episodes artifacts migration verified (processed %d items across %d episodes)", migratedCount, len(episodes))
 	}
 }
+
+// enrichEpisodesWithArtifacts 从 subtitles、translations、summaries 表中聚合两层语言数据并回填到单集响应中
+// 保证：
+// 1. 内容本身语言（原文字幕/歌词）：srt_content / lrc_content
+// 2. 翻译语言（译文）：translation / lrc_translation
+// 3. 摘要：summary
+func enrichEpisodesWithArtifacts(app *pocketbase.PocketBase, episodes []*core.Record) []map[string]interface{} {
+	if len(episodes) == 0 {
+		return []map[string]interface{}{}
+	}
+
+	result := make([]map[string]interface{}, 0, len(episodes))
+	guids := make([]string, 0, len(episodes))
+	for _, ep := range episodes {
+		if g := ep.GetString("guid"); g != "" {
+			guids = append(guids, g)
+		}
+	}
+
+	// 内存映射表：guid -> 原文字幕(srt/lrc)
+	subtitlesMap := make(map[string]map[string]string)   // guid -> type -> content
+	subStatusMap := make(map[string]map[string]string)   // guid -> type -> status
+	translationsMap := make(map[string]map[string]string) // guid -> sourceType -> content
+	transLangMap := make(map[string]map[string]string)    // guid -> sourceType -> targetLang
+	transStatusMap := make(map[string]map[string]string)  // guid -> sourceType -> status
+	summariesMap := make(map[string]string)               // guid -> content
+
+	if len(guids) > 0 {
+		// 批量拉取 subtitles
+		if subs, err := app.FindRecordsByFilter("subtitles", "1=1", "-updated", 300, 0); err == nil {
+			for _, s := range subs {
+				g := s.GetString("episode_guid")
+				t := s.GetString("type")
+				c := s.GetString("content")
+				st := s.GetString("status")
+				if g != "" && t != "" {
+					if _, ok := subtitlesMap[g]; !ok {
+						subtitlesMap[g] = make(map[string]string)
+						subStatusMap[g] = make(map[string]string)
+					}
+					if _, exists := subtitlesMap[g][t]; !exists {
+						subtitlesMap[g][t] = c
+						subStatusMap[g][t] = st
+					}
+				}
+			}
+		}
+
+		// 批量拉取 translations
+		if transList, err := app.FindRecordsByFilter("translations", "1=1", "-updated", 300, 0); err == nil {
+			for _, tr := range transList {
+				g := tr.GetString("episode_guid")
+				st := tr.GetString("source_type")
+				c := tr.GetString("content")
+				lang := tr.GetString("target_lang")
+				status := tr.GetString("status")
+				if g != "" && st != "" {
+					if _, ok := translationsMap[g]; !ok {
+						translationsMap[g] = make(map[string]string)
+						transLangMap[g] = make(map[string]string)
+						transStatusMap[g] = make(map[string]string)
+					}
+					if _, exists := translationsMap[g][st]; !exists {
+						translationsMap[g][st] = c
+						transLangMap[g][st] = lang
+						transStatusMap[g][st] = status
+					}
+				}
+			}
+		}
+
+		// 批量拉取 summaries
+		if sums, err := app.FindRecordsByFilter("summaries", "1=1", "-updated", 200, 0); err == nil {
+			for _, sm := range sums {
+				g := sm.GetString("episode_guid")
+				c := sm.GetString("content")
+				if g != "" && c != "" {
+					if _, exists := summariesMap[g]; !exists {
+						summariesMap[g] = c
+					}
+				}
+			}
+		}
+	}
+
+	for _, ep := range episodes {
+		guid := ep.GetString("guid")
+		item := make(map[string]interface{})
+
+		// 先复制原始 episodes 表所有字段
+		for _, name := range ep.Collection().Fields.FieldNames() {
+			item[name] = ep.Get(name)
+		}
+		item["id"] = ep.Id
+		item["created"] = ep.GetDateTime("created").String()
+		item["updated"] = ep.GetDateTime("updated").String()
+
+		// 1. 优先从 subtitles 回填内容本身语言 (SRT / LRC)
+		if subMap, ok := subtitlesMap[guid]; ok {
+			if srtContent, ok := subMap["srt"]; ok && srtContent != "" {
+				item["srt_content"] = srtContent
+				if st := subStatusMap[guid]["srt"]; st != "" {
+					item["transcription_status"] = st
+				}
+			}
+			if lrcContent, ok := subMap["lrc"]; ok && lrcContent != "" {
+				item["lrc_content"] = lrcContent
+			}
+		}
+
+		// 2. 优先从 translations 回填翻译语言 (SRT 翻译 / LRC 翻译)
+		if trMap, ok := translationsMap[guid]; ok {
+			if srtTrans, ok := trMap["srt"]; ok && srtTrans != "" {
+				item["translation"] = srtTrans
+				item["translation_lang"] = transLangMap[guid]["srt"]
+				item["translation_status"] = transStatusMap[guid]["srt"]
+			}
+			if lrcTrans, ok := trMap["lrc"]; ok && lrcTrans != "" {
+				item["lrc_translation"] = lrcTrans
+				item["lrc_translation_lang"] = transLangMap[guid]["lrc"]
+				item["lrc_translation_status"] = transStatusMap[guid]["lrc"]
+			}
+		}
+
+		// 3. 优先从 summaries 回填摘要
+		if sumText, ok := summariesMap[guid]; ok && sumText != "" {
+			item["summary"] = sumText
+		}
+
+		result = append(result, item)
+	}
+
+	return result
+}

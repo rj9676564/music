@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -131,9 +132,46 @@ func main() {
 				return err
 			}
 
+			enriched := enrichEpisodesWithArtifacts(app, episodes)
+
 			return e.JSON(http.StatusOK, map[string]interface{}{
 				"success":  true,
-				"episodes": episodes,
+				"episodes": enriched,
+			})
+		})
+
+		// 全量/多频道单集查询 (支持聚合子表语言数据：原文语言 + 翻译语言 + 摘要)
+		e.Router.GET("/api/episodes", func(e *core.RequestEvent) error {
+			limitStr := e.Request.URL.Query().Get("limit")
+			limit := 100
+			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 300 {
+				limit = l
+			}
+			channelID := strings.TrimSpace(e.Request.URL.Query().Get("channel_id"))
+			filter := "1=1"
+			params := dbx.Params{}
+			if channelID != "" {
+				filter = "channel_id = {:channelID}"
+				params["channelID"] = channelID
+			}
+
+			episodes, err := app.FindRecordsByFilter(
+				"episodes",
+				filter,
+				"-pub_date",
+				limit, 0,
+				params,
+			)
+			if err != nil {
+				return err
+			}
+
+			enriched := enrichEpisodesWithArtifacts(app, episodes)
+
+			return e.JSON(http.StatusOK, map[string]interface{}{
+				"success":  true,
+				"count":    len(enriched),
+				"episodes": enriched,
 			})
 		})
 

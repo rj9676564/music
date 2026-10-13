@@ -907,7 +907,8 @@
       try {
         const res = await fetch(`/api/channels/${channelId}/episodes`);
         if (!res.ok) throw new Error('Failed');
-        currentEpisodes = await res.json();
+        const data = await res.json();
+        currentEpisodes = data.episodes || data || [];
         renderEpisodesTable(currentEpisodes);
       } catch (e) {
         showToast('获取单集失败', 'error');
@@ -918,10 +919,10 @@
       const tbody = document.getElementById('episodes-table-body');
       tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">正在加载单集列表...</td></tr>';
       try {
-        const res = await fetch('/api/collections/episodes/records?perPage=100&sort=-created');
+        const res = await fetch('/api/episodes?limit=100');
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
-        currentEpisodes = data.items || [];
+        currentEpisodes = data.episodes || [];
         renderEpisodesTable(currentEpisodes);
       } catch (e) {
         // fallback
