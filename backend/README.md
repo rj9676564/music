@@ -72,6 +72,7 @@ backend/
 | `/api/save-srt` | POST | 保存生成好的字幕（保存后自动触发歌词翻译，兼容老接口） |
 | `/api/summary` | POST | 调用 AI 生成内容摘要 |
 | `/api/translate` | POST | 调用 AI 翻译歌词/字幕，结果缓存到 `episodes.translation` |
+| `/api/save-lrc` | POST | 保存 LRC 歌词到 `episodes.lrc_content`，默认自动在后台翻译为 `TRANSLATE_TARGET_LANG`，结果写入 `lrc_translation`（状态见 `lrc_translation_status`） |
 | `/media/*` | GET | 访问本地缓存的音频文件 |
 | `/doc` | GET | 查看详细 API 文档 |
 
@@ -111,8 +112,9 @@ backend/
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OPENAI_API_KEY` | 无 | LLM 密钥；未配置时自动翻译会跳过 |
-| `OPENAI_API_BASE` | `https://api.openai.com/v1` | OpenAI 兼容接口地址 |
-| `OPENAI_MODEL` | `gpt-3.5-turbo` | 使用的模型 |
+| `OPENAI_API_BASE` | `https://api.openai.com/v1` | OpenAI 兼容接口地址（通常以 `/v1` 结尾） |
+| `OPENAI_MODEL` | `gpt-3.5-turbo` | 使用的模型名 |
+| `LLM_DISABLE_THINKING` | `true` | 关闭思考模式（发送 `enable_thinking:false` 与 `thinking:{type:"disabled"}`，并剔除正文里的 `<think>` 块）；对 `api.openai.com` 不发送；设为 `false` 恢复 |
 | `TRANSLATE_TARGET_LANG` | `中文` | 默认翻译目标语言 |
 | `AUTO_TRANSLATE` | `true` | 设为 `false` 关闭转录完成后的自动翻译 |
 

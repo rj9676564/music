@@ -9,6 +9,9 @@ services:
       # 如果需要摘要功能，请在此配置
       # - OPENAI_API_KEY=sk-...
       # - OPENAI_API_BASE=https://api.openai.com/v1
+      # - OPENAI_MODEL=gpt-4o-mini
+      # - LLM_DISABLE_THINKING=true
+      # - TRANSLATE_TARGET_LANG=中文
     volumes:
       - ./media_cache:/app/media_cache
       - ./pb_data:/app/pb_data

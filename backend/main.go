@@ -327,6 +327,39 @@ func main() {
 			return e.JSON(http.StatusOK, map[string]bool{"success": true})
 		})
 
+		// 保存 LRC 歌词：落库后默认在后台自动翻译成服务端默认语言（AUTO_TRANSLATE=false 可关闭）
+		e.Router.POST("/api/save-lrc", func(e *core.RequestEvent) error {
+			var data struct {
+				GUID       string `json:"guid"`
+				LrcContent string `json:"lrcContent"`
+			}
+			if err := e.BindBody(&data); err != nil {
+				return err
+			}
+			if strings.TrimSpace(data.LrcContent) == "" {
+				return apis.NewBadRequestError("lrcContent is required", nil)
+			}
+			if len(data.LrcContent) > 200*1024 {
+				return apis.NewBadRequestError("lrcContent too large (max 200KB)", nil)
+			}
+
+			record, err := app.FindFirstRecordByData("episodes", "guid", data.GUID)
+			if err != nil {
+				return apis.NewNotFoundError("Episode not found", err)
+			}
+			record.Set("lrc_content", data.LrcContent)
+			// 歌词变了，旧译文作废
+			record.Set("lrc_translation", "")
+			record.Set("lrc_translation_status", "")
+			if err := app.Save(record); err != nil {
+				return apis.NewBadRequestError("Failed to save LRC", err)
+			}
+
+			go autoTranslateLRC(app, data.GUID, data.LrcContent)
+
+			return e.JSON(http.StatusOK, map[string]bool{"success": true})
+		})
+
 		// 加入转录队列 (兼容旧接口)
 		e.Router.POST("/api/queue-transcription", func(e *core.RequestEvent) error {
 			var data struct {
@@ -1024,6 +1057,67 @@ func startTranslation(app *pocketbase.PocketBase, guid, srtContent, targetLang s
 	return nil
 }
 
+// startLRCTranslation 后台翻译一集的 LRC，结果写入 episodes.lrc_translation。
+// 与 SRT 翻译共用 translateInflight（key 加 lrc: 前缀），同一集同时只跑一个任务。
+func startLRCTranslation(app *pocketbase.PocketBase, guid, lrcContent, targetLang string) error {
+	cfg, err := resolveLLMConfig("", "", "")
+	if err != nil {
+		return err
+	}
+	key := "lrc:" + guid
+	if _, running := translateInflight.LoadOrStore(key, struct{}{}); running {
+		log.Printf("⏭️ LRC translate already running for %s", guid)
+		return nil
+	}
+	defer translateInflight.Delete(key)
+
+	record, err := app.FindFirstRecordByData("episodes", "guid", guid)
+	if err != nil {
+		return fmt.Errorf("episode %s not found", guid)
+	}
+	record.Set("lrc_translation_status", "pending")
+	record.Set("lrc_translation_lang", targetLang)
+	if err := app.Save(record); err != nil {
+		return err
+	}
+
+	log.Printf("🌐 Translating LRC %s -> %s", guid, targetLang)
+	translation, translateErr := translateLRC(lrcContent, targetLang, cfg)
+
+	// 重新拉取记录，避免覆盖翻译期间的其他写入
+	rec, findErr := app.FindFirstRecordByData("episodes", "guid", guid)
+	if findErr != nil {
+		return fmt.Errorf("episode %s disappeared", guid)
+	}
+	// 翻译期间歌词被替换了，这份译文已过期，丢弃
+	if rec.GetString("lrc_content") != lrcContent {
+		log.Printf("⏭️ LRC changed during translation, dropping result for %s", guid)
+		return nil
+	}
+	if translateErr != nil {
+		rec.Set("lrc_translation_status", "failed")
+		app.Save(rec)
+		return translateErr
+	}
+	rec.Set("lrc_translation", translation)
+	rec.Set("lrc_translation_status", "completed")
+	if err := app.Save(rec); err != nil {
+		return err
+	}
+	log.Printf("✅ LRC translate completed for %s", guid)
+	return nil
+}
+
+// autoTranslateLRC 在 LRC 保存后自动翻译，失败只记录日志
+func autoTranslateLRC(app *pocketbase.PocketBase, guid, lrcContent string) {
+	if !autoTranslateEnabled() {
+		return
+	}
+	if err := startLRCTranslation(app, guid, lrcContent, defaultTranslateLang()); err != nil {
+		log.Printf("❌ Auto LRC translate failed (%s): %v", guid, err)
+	}
+}
+
 // autoTranslateEpisode 在转录完成后自动翻译，失败只记录日志不影响转录流程
 func autoTranslateEpisode(app *pocketbase.PocketBase, guid, srtContent string) {
 	if !autoTranslateEnabled() {
@@ -1378,6 +1472,10 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		c.Fields.Add(&core.EditorField{Name: "translation"})
 		c.Fields.Add(&core.TextField{Name: "translation_lang"})
 		c.Fields.Add(&core.TextField{Name: "translation_status"})
+		c.Fields.Add(&core.EditorField{Name: "lrc_content"})
+		c.Fields.Add(&core.EditorField{Name: "lrc_translation"})
+		c.Fields.Add(&core.TextField{Name: "lrc_translation_lang"})
+		c.Fields.Add(&core.TextField{Name: "lrc_translation_status"})
 
 		if err := app.Save(c); err != nil {
 			log.Printf("❌ Failed to save episodes collection: %v", err)
@@ -1408,6 +1506,16 @@ func ensureCollections(app *pocketbase.PocketBase) {
 		if episodes.Fields.GetByName("translation_status") == nil {
 			episodes.Fields.Add(&core.TextField{Name: "translation_status"})
 			changed = true
+		}
+		for _, name := range []string{"lrc_content", "lrc_translation"} {
+			if addEditorFieldIfMissing(episodes, name) {
+				changed = true
+			}
+		}
+		for _, name := range []string{"lrc_translation_lang", "lrc_translation_status"} {
+			if addTextFieldIfMissing(episodes, name, false) {
+				changed = true
+			}
 		}
 
 		if changed {

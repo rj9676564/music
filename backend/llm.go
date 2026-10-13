@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -16,6 +18,21 @@ type llmConfig struct {
 	APIKey  string
 	APIBase string
 	Model   string
+}
+
+var thinkBlockRe = regexp.MustCompile(`(?s)<think>.*?</think>`)
+
+// disableThinkingEnabled 控制是否关闭模型的思考模式，默认关闭（翻译/摘要不需要推理，开着又慢又费 token）。
+// LLM_DISABLE_THINKING=false 可恢复。官方 api.openai.com 不认这些扩展参数，会 400，所以对它不发送。
+func disableThinkingEnabled(apiBase string) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("LLM_DISABLE_THINKING")))
+	if v == "false" || v == "0" || v == "off" {
+		return false
+	}
+	if u, err := url.Parse(apiBase); err == nil && u.Hostname() == "api.openai.com" {
+		return false
+	}
+	return true
 }
 
 // resolveLLMConfig 优先使用请求里传入的配置，缺失时回落到环境变量与默认值
@@ -59,6 +76,12 @@ func callLLMChat(cfg llmConfig, systemPrompt, userPrompt string, timeout time.Du
 	payload := map[string]interface{}{
 		"model":    cfg.Model,
 		"messages": messages,
+	}
+	if disableThinkingEnabled(cfg.APIBase) {
+		// 各家 OpenAI 兼容服务关闭思考的字段不同，多发无害（不认识的字段会被忽略）：
+		// Qwen/vLLM/SGLang 用 enable_thinking，DeepSeek/GLM/Kimi 用 thinking.type
+		payload["enable_thinking"] = false
+		payload["thinking"] = map[string]string{"type": "disabled"}
 	}
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
@@ -114,7 +137,11 @@ func callLLMChat(cfg llmConfig, systemPrompt, userPrompt string, timeout time.Du
 		return "", fmt.Errorf("LLM %s: status %d: %s", endpoint, resp.StatusCode, snippet(body))
 	}
 	if len(result.Choices) > 0 && strings.TrimSpace(result.Choices[0].Message.Content) != "" {
-		return result.Choices[0].Message.Content, nil
+		// 部分模型即使关闭思考，仍会把 <think>…</think> 混进正文，会污染编号解析
+		content := strings.TrimSpace(thinkBlockRe.ReplaceAllString(result.Choices[0].Message.Content, ""))
+		if content != "" {
+			return content, nil
+		}
 	}
 	if result.Error.Message != "" {
 		return "", fmt.Errorf("LLM error: %s", result.Error.Message)
