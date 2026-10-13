@@ -7,7 +7,7 @@ import FormData from 'form-data'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const boundsPath = path.join(app.getPath('userData'), 'lyric-bounds.json')
-let globalSettings = { apiUrl: 'http://localhost:8080' }
+let globalSettings = { apiUrl: 'https://en.mrlb.cc.cd' }
 const MAIN_WINDOW_WIDTH = 760
 const MAIN_WINDOW_HEIGHT = 1080
 
@@ -65,6 +65,7 @@ function registerLocalResourceProtocol() {
 
 let win: BrowserWindow | null
 let lyricWin: BrowserWindow | null
+let isQuitting = false
 
 function createWindow() {
   win = new BrowserWindow({
@@ -86,6 +87,15 @@ function createWindow() {
   } else {
     win.loadFile(path.join(process.env.DIST, 'index.html'))
   }
+
+  // macOS 的 Cmd+W 会触发 close。最小化主窗口而不是销毁 renderer，
+  // 这样音频播放和播放状态可以继续保留。
+  win.on('close', (event) => {
+    if (process.platform === 'darwin' && !isQuitting) {
+      event.preventDefault()
+      win?.minimize()
+    }
+  })
 
   win.on('closed', () => {
     win = null
@@ -226,6 +236,8 @@ app.on('window-all-closed', () => {
 
 // 应用退出前保存位置
 app.on('before-quit', () => {
+  isQuitting = true
+
   if (lyricWin && !lyricWin.isDestroyed()) {
     const bounds = lyricWin.getBounds()
     saveBounds(bounds)
@@ -543,7 +555,7 @@ ipcMain.on('toggle-lyric-window', (_event, visible: boolean) => {
 
 // AI Transcription Service - Now delegated to Go backend
 ipcMain.handle('transcribe-audio', async (_event, audioPath: string, guid?: string) => {
-  const apiUrl = globalSettings.apiUrl || 'http://localhost:8080'
+  const apiUrl = globalSettings.apiUrl || 'https://en.mrlb.cc.cd'
   console.log(`Delegating AI Transcription to Go backend: ${apiUrl}/api/transcribe`, audioPath, 'GUID:', guid)
   
   try {

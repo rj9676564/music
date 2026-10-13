@@ -38,7 +38,7 @@ export const useSettingsStore = create<SettingsState>()(
       pauseOnHeadphoneDisconnect: true,
       lyricOffset: 0,
       audioDeviceId: 'default',
-      apiUrl: 'http://104.224.153.178:58081',
+      apiUrl: 'https://en.mrlb.cc.cd',
       llmApiKey: '',
       llmApiBase: 'https://api.moonshot.cn/v1',
       llmModel: 'moonshot-v1-8k',
@@ -53,6 +53,17 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'player-settings-storage', // key in localStorage
+      version: 1,
+      migrate: (persistedState: any) => {
+        if (
+          !persistedState?.apiUrl ||
+          persistedState.apiUrl === 'http://104.224.153.178:58081' ||
+          persistedState.apiUrl === 'http://localhost:8080'
+        ) {
+          persistedState.apiUrl = 'https://en.mrlb.cc.cd';
+        }
+        return persistedState;
+      },
     }
   )
 );

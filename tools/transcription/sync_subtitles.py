@@ -13,7 +13,7 @@ import signal
 from typing import Optional, Dict, Any
 
 # ================= 配置部分 =================
-VPS_URL = os.getenv("VPS_URL", "https://podcast.mrlb.top")
+VPS_URL = os.getenv("VPS_URL", "https://en.mrlb.cc.cd")
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", "./media_cache")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 WORKER_ID = os.getenv("WORKER_ID", f"{socket.gethostname()}-{os.getpid()}")

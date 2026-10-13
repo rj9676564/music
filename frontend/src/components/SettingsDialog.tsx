@@ -237,7 +237,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 onChange={(e) =>
                   settings.updateSettings({ apiUrl: e.target.value })
                 }
-                placeholder="http://localhost:8080"
+                placeholder="https://en.mrlb.cc.cd"
                 style={{
                   width: "100%",
                   padding: "8px",
