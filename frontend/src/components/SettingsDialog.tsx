@@ -1,14 +1,12 @@
 import React from "react";
 import { CloseIcon } from "./Icons";
 import { ColorPicker } from "./ColorPicker";
-import { color, gradient } from "../styles/tokens";
+import { color } from "../styles/tokens";
 
 interface SettingsDialogProps {
   embedded?: boolean;
   onClose: () => void;
   settings: any;
-  isTranscribing: boolean;
-  onAiTranscribe: () => void;
   onResetLyricWindow: () => void;
 }
 
@@ -16,11 +14,14 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   embedded = false,
   onClose,
   settings,
-  isTranscribing,
-  onAiTranscribe,
   onResetLyricWindow,
 }) => {
   const [devices, setDevices] = React.useState<MediaDeviceInfo[]>([]);
+  const [repeatCount, setRepeatCount] = React.useState<number>(() => {
+    const saved = localStorage.getItem("sentence-repeat-count");
+    const parsed = saved ? Number.parseInt(saved, 10) : 5;
+    return Number.isFinite(parsed) ? Math.min(20, Math.max(1, parsed)) : 5;
+  });
 
   React.useEffect(() => {
     const fetchDevices = async () => {
@@ -46,27 +47,20 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         <div className="settings-dialog-content custom-scrollbar">
           <div className="setting-row">
             <button
-              className={`tool-btn ${isTranscribing ? "" : "active"}`}
+              className="tool-btn"
               style={{
                 flex: 1,
                 padding: "10px",
-                background: isTranscribing
-                  ? "#444"
-                  : gradient.brand,
-                border: "none",
+                background: color.hairlineStrong,
+                border: "1px solid rgba(255, 255, 255, 0.15)",
                 color: "#fff",
+                borderRadius: "6px",
                 fontWeight: "bold",
-                fontSize: "0.8rem",
+                fontSize: "0.85rem",
+                cursor: "pointer",
               }}
-              onClick={onAiTranscribe}
-              disabled={isTranscribing}>
-              {isTranscribing ? "⏳ AI 转录中..." : "✨ AI 生成歌词"}
-            </button>
-            <button
-              className="tool-btn"
-              style={{ padding: "0 15px" }}
               onClick={onResetLyricWindow}>
-              🔄 重置位置
+              🔄 重置桌面歌词位置
             </button>
           </div>
 
@@ -150,6 +144,134 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 />
                 摘下/断开耳机时自动暂停
               </label>
+            </div>
+            <div className="setting-item">
+              <label>方向键控制类型 (← / →)</label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginTop: "6px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  padding: "4px",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    settings.updateSettings({ arrowKeySeekMode: "time" })
+                  }
+                  style={{
+                    flex: 1,
+                    padding: "6px 12px",
+                    background:
+                      (settings.arrowKeySeekMode ?? "time") === "time"
+                        ? color.accentBgStrong
+                        : "transparent",
+                    color:
+                      (settings.arrowKeySeekMode ?? "time") === "time"
+                        ? color.accent
+                        : "white",
+                    border:
+                      (settings.arrowKeySeekMode ?? "time") === "time"
+                        ? `1px solid ${color.accentBorder}`
+                        : "1px solid transparent",
+                    borderRadius: "4px",
+                    fontSize: "0.8rem",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}>
+                  ⏱️ 按时间 (±5秒)
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    settings.updateSettings({ arrowKeySeekMode: "sentence" })
+                  }
+                  style={{
+                    flex: 1,
+                    padding: "6px 12px",
+                    background:
+                      settings.arrowKeySeekMode === "sentence"
+                        ? color.accentBgStrong
+                        : "transparent",
+                    color:
+                      settings.arrowKeySeekMode === "sentence"
+                        ? color.accent
+                        : "white",
+                    border:
+                      settings.arrowKeySeekMode === "sentence"
+                        ? `1px solid ${color.accentBorder}`
+                        : "1px solid transparent",
+                    borderRadius: "4px",
+                    fontSize: "0.8rem",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}>
+                  💬 按句子 (上一句 / 下一句)
+                </button>
+              </div>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: color.fg3,
+                  marginTop: "4px",
+                }}>
+                播放时按键盘左/右方向键（← / →）的跳转方式
+              </div>
+            </div>
+            <div className="setting-item">
+              <label>听力训练每句循环次数 (快捷键 R):</label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  marginTop: "6px",
+                  flexWrap: "wrap",
+                }}>
+                {[1, 2, 3, 5, 10].map((num) => {
+                  const isSelected = repeatCount === num;
+                  return (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => {
+                        setRepeatCount(num);
+                        localStorage.setItem("sentence-repeat-count", String(num));
+                        window.dispatchEvent(
+                          new CustomEvent("sentence-repeat-count-changed", {
+                            detail: num,
+                          })
+                        );
+                      }}
+                      style={{
+                        padding: "4px 14px",
+                        background: isSelected
+                          ? color.accentBgStrong
+                          : "rgba(255, 255, 255, 0.05)",
+                        color: isSelected ? color.accent : "white",
+                        border: isSelected
+                          ? `1px solid ${color.accentBorder}`
+                          : "1px solid rgba(255, 255, 255, 0.1)",
+                        borderRadius: "4px",
+                        fontSize: "0.8rem",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                      }}>
+                      {num} 次
+                    </button>
+                  );
+                })}
+              </div>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: color.fg3,
+                  marginTop: "4px",
+                }}>
+                开启听力训练后，每句歌词播放完自动循环指定次数，然后自动进入下一句精听
+              </div>
             </div>
             <div className="setting-item">
               <label>
@@ -238,72 +360,6 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   settings.updateSettings({ apiUrl: e.target.value })
                 }
                 placeholder="https://en.mrlb.cc.cd"
-                style={{
-                  width: "100%",
-                  padding: "8px",
-                  background: color.hairlineStrong,
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  borderRadius: "4px",
-                  color: "white",
-                  outline: "none",
-                  marginTop: "4px",
-                  fontSize: "0.8rem",
-                }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>AI 摘要 API Key (OpenAI 兼容)</label>
-              <input
-                type="password"
-                value={settings.llmApiKey}
-                onChange={(e) =>
-                  settings.updateSettings({ llmApiKey: e.target.value })
-                }
-                placeholder="sk-..."
-                style={{
-                  width: "100%",
-                  padding: "8px",
-                  background: color.hairlineStrong,
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  borderRadius: "4px",
-                  color: "white",
-                  outline: "none",
-                  marginTop: "4px",
-                  fontSize: "0.8rem",
-                }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>AI 摘要 API Proxy (可选)</label>
-              <input
-                type="text"
-                value={settings.llmApiBase}
-                onChange={(e) =>
-                  settings.updateSettings({ llmApiBase: e.target.value })
-                }
-                placeholder="https://api.openai.com/v1"
-                style={{
-                  width: "100%",
-                  padding: "8px",
-                  background: color.hairlineStrong,
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  borderRadius: "4px",
-                  color: "white",
-                  outline: "none",
-                  marginTop: "4px",
-                  fontSize: "0.8rem",
-                }}
-              />
-            </div>
-            <div className="setting-item">
-              <label>AI 模型 (Model)</label>
-              <input
-                type="text"
-                value={settings.llmModel}
-                onChange={(e) =>
-                  settings.updateSettings({ llmModel: e.target.value })
-                }
-                placeholder="moonshot-v1-8k"
                 style={{
                   width: "100%",
                   padding: "8px",

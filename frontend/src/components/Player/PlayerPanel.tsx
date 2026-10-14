@@ -486,15 +486,15 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 }}
                 title={
                   sentenceLoopEnabled
-                    ? `关闭当前句复听 (R) · 剩余 ${Math.max(0, sentenceRepeatCount - sentenceLoopCompleted)}`
-                    : "循环当前高亮句 (R)"
+                    ? `逐句精听训练进行中 (R) · 本句剩余 ${Math.max(0, sentenceRepeatCount - sentenceLoopCompleted)} 次`
+                    : "开启逐句精听训练 (R)"
                 }>
                 <RepeatIcon />
               </button>
               <Select
                 bare
                 minWidth={60}
-                title="额外复听次数"
+                title="每句循环次数"
                 value={sentenceRepeatCount}
                 onChange={(v) => onSentenceRepeatCountChange(Number(v))}
                 options={Array.from({ length: 20 }, (_, i) => ({

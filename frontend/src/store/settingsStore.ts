@@ -14,10 +14,8 @@ interface PlayerSettings {
   lyricOffset: number; // in seconds, can be positive or negative
   audioDeviceId: string;
   apiUrl: string;
-  llmApiKey: string;
-  llmApiBase: string;
-  llmModel: string;
   showTranslation: boolean;
+  arrowKeySeekMode: 'time' | 'sentence'; // 方向键控制方式：按时间 / 按句子
 }
 
 interface SettingsState extends PlayerSettings {
@@ -39,10 +37,8 @@ export const useSettingsStore = create<SettingsState>()(
       lyricOffset: 0,
       audioDeviceId: 'default',
       apiUrl: 'https://en.mrlb.cc.cd',
-      llmApiKey: '',
-      llmApiBase: 'https://api.moonshot.cn/v1',
-      llmModel: 'moonshot-v1-8k',
       showTranslation: true,
+      arrowKeySeekMode: 'time',
       updateSettings: (newSettings) => {
         if (newSettings.apiUrl) {
           console.log('🌐 API URL Updated to:', newSettings.apiUrl);

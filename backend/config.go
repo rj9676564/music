@@ -71,7 +71,7 @@ func ensureConfigsCollection(app *pocketbase.PocketBase) {
 			APIKey:  apiKey,
 			APIBase: apiBase,
 			Model:   model,
-			Prompt:  "Summary: ",
+			Prompt:  "Summarize the following transcript concisely in English: ",
 		}
 	})
 
@@ -235,7 +235,7 @@ func resolveSummaryLLMConfig(app *pocketbase.PocketBase, customKey, customBase, 
 	key := strings.TrimSpace(customKey)
 	base := strings.TrimSpace(customBase)
 	model := strings.TrimSpace(customModel)
-	prompt := "Summary: "
+	prompt := "Summarize the following transcript concisely in English: "
 
 	if hasDB {
 		if key == "" {
@@ -247,7 +247,7 @@ func resolveSummaryLLMConfig(app *pocketbase.PocketBase, customKey, customBase, 
 		if model == "" {
 			model = dbItem.Model
 		}
-		if strings.TrimSpace(dbItem.Prompt) != "" {
+		if strings.TrimSpace(dbItem.Prompt) != "" && dbItem.Prompt != "Summary: " {
 			prompt = dbItem.Prompt
 		}
 	}

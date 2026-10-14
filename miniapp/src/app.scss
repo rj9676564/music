@@ -1,0 +1,24 @@
+page {
+  --bg: #0f1115;
+  --card: #181b22;
+  --text: #f2f4f8;
+  --muted: #8b93a3;
+  --accent: #7cc4ff;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 28px;
+  box-sizing: border-box;
+}
+
+view,
+text,
+image,
+scroll-view {
+  box-sizing: border-box;
+}
+
+.empty {
+  padding: 120px 0;
+  text-align: center;
+  color: var(--muted);
+}

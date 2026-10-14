@@ -464,23 +464,24 @@
       <div class="card">
         <div class="card-header">
           <div>
-            <h2 class="card-title">🎙️ 单集歌词与翻译控制台</h2>
-            <p class="card-subtitle">支持搜索节目、手动触发字幕/歌词翻译、生成 AI 摘要及查看转录结果</p>
+            <h2 class="card-title">🎙️ 单集歌词与翻译控制台 <span id="episode-count-badge" style="font-size: 0.8rem; font-weight: normal; color: var(--text-dim); margin-left: 0.5rem;"></span></h2>
+            <p class="card-subtitle">支持搜索节目、手动触发字幕/歌词翻译、生成英文摘要 (EN) 及查看转录结果</p>
           </div>
           <div>
-            <button class="btn btn-secondary btn-sm" onclick="fetchEpisodes()">🔄 刷新列表</button>
+            <button class="btn btn-secondary btn-sm" onclick="searchEpisodes()">🔄 刷新列表</button>
           </div>
         </div>
 
         <div class="toolbar">
-          <div class="search-box">
-            <input type="text" id="episode-search" class="form-control" placeholder="🔍 搜索标题、GUID..." onkeyup="filterEpisodes()">
+          <div class="search-box" style="display: flex; gap: 0.5rem;">
+            <input type="text" id="episode-search" class="form-control" placeholder="🔍 搜索单集标题、GUID..." onkeydown="if(event.key === 'Enter') searchEpisodes()">
+            <button class="btn btn-primary" id="btn-search-episodes" onclick="searchEpisodes()">🔍 搜索</button>
           </div>
-          <div style="display: flex; gap: 0.5rem;">
-            <select id="channel-filter" class="form-control" style="width: 220px;" onchange="onChannelSelect()">
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <select id="channel-filter" class="form-control" style="width: 200px;" onchange="searchEpisodes()">
               <option value="">全部频道 (All Channels)</option>
             </select>
-            <select id="status-filter" class="form-control" style="width: 150px;" onchange="filterEpisodes()">
+            <select id="status-filter" class="form-control" style="width: 130px;" onchange="filterEpisodes()">
               <option value="">全部状态</option>
               <option value="trans_completed">转录已完成</option>
               <option value="trans_pending">转录处理中</option>
@@ -489,6 +490,12 @@
               <option value="tl_completed">翻译已完成</option>
               <option value="tl_none">未翻译</option>
             </select>
+            <select id="limit-filter" class="form-control" style="width: 100px;" onchange="searchEpisodes()">
+              <option value="20" selected>20 条</option>
+              <option value="50">50 条</option>
+              <option value="100">100 条</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="resetSearch()">重置</button>
           </div>
         </div>
 
@@ -600,9 +607,9 @@
           </div>
 
           <div class="form-group">
-            <label>自定义摘要 Prompt 前缀</label>
-            <input type="text" id="cfg-sum-prompt" class="form-control" placeholder="Summary: ">
-            <span class="form-hint">默认前缀为 "Summary: "，也可填写 "请用中文对以下播客内容生成一段结构化要点摘要："</span>
+            <label>自定义摘要 Prompt 前缀 (英文摘要)</label>
+            <input type="text" id="cfg-sum-prompt" class="form-control" placeholder="Summarize the following transcript concisely in English: ">
+            <span class="form-hint">默认将始终输出英文摘要 (English summary only)</span>
           </div>
         </div>
 
@@ -656,11 +663,14 @@
         <button class="btn btn-secondary btn-sm" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div style="margin-bottom: 0.75rem; display: flex; gap: 0.5rem;">
-          <button class="btn btn-secondary btn-sm active" id="btn-tab-srt" onclick="switchPreviewType('srt')">SRT 字幕</button>
-          <button class="btn btn-secondary btn-sm" id="btn-tab-lrc" onclick="switchPreviewType('lrc')">LRC 歌词</button>
-          <button class="btn btn-secondary btn-sm" id="btn-tab-trans" onclick="switchPreviewType('trans')">译文内容</button>
-          <button class="btn btn-secondary btn-sm" id="btn-tab-summary" onclick="switchPreviewType('summary')">AI 摘要</button>
+        <div style="margin-bottom: 0.75rem; display: flex; gap: 0.5rem; justify-content: space-between; align-items: center;">
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-sm active" id="btn-tab-srt" onclick="switchPreviewType('srt')">SRT 字幕</button>
+            <button class="btn btn-secondary btn-sm" id="btn-tab-lrc" onclick="switchPreviewType('lrc')">LRC 歌词</button>
+            <button class="btn btn-secondary btn-sm" id="btn-tab-trans" onclick="switchPreviewType('trans')">译文内容</button>
+            <button class="btn btn-secondary btn-sm" id="btn-tab-summary" onclick="switchPreviewType('summary')">AI 摘要 (EN)</button>
+          </div>
+          <div id="modal-tab-action"></div>
         </div>
         <div id="modal-text" class="text-preview">无内容</div>
       </div>
@@ -764,7 +774,7 @@
           apiBase: document.getElementById('cfg-sum-base').value.trim(),
           apiKey: document.getElementById('cfg-sum-key').value.trim(),
           model: document.getElementById('cfg-sum-model').value.trim(),
-          prompt: document.getElementById('cfg-sum-prompt').value.trim() || 'Summary: '
+          prompt: document.getElementById('cfg-sum-prompt').value.trim() || 'Summarize the following transcript concisely in English: '
         }
       };
 
@@ -897,41 +907,62 @@
       }
     }
 
-    // --- 单集加载 ---
-    async function onChannelSelect() {
+    // --- 单集检索与加载 ---
+    async function searchEpisodes() {
+      const q = document.getElementById('episode-search').value.trim();
       const channelId = document.getElementById('channel-filter').value;
-      if (!channelId) {
-        fetchEpisodes();
-        return;
+      const limit = document.getElementById('limit-filter').value || '20';
+      const btn = document.getElementById('btn-search-episodes');
+      const origText = btn ? btn.innerText : '';
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = '⏳ 搜索中...';
       }
+
+      const tbody = document.getElementById('episodes-table-body');
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">正在检索单集数据...</td></tr>';
+
       try {
-        const res = await fetch(`/api/channels/${channelId}/episodes`);
-        if (!res.ok) throw new Error('Failed');
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (channelId) params.set('channel_id', channelId);
+        params.set('limit', limit);
+
+        const res = await fetch(`/api/episodes?${params.toString()}`);
+        if (!res.ok) throw new Error('网络请求异常');
         const data = await res.json();
-        currentEpisodes = data.episodes || data || [];
-        renderEpisodesTable(currentEpisodes);
-      } catch (e) {
-        showToast('获取单集失败', 'error');
+        currentEpisodes = data.episodes || [];
+        filterEpisodes();
+        const badge = document.getElementById('episode-count-badge');
+        if (badge) {
+          badge.innerText = `(展示 ${currentEpisodes.length} 条)`;
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger); padding: 2rem;">加载失败: ${err.message}</td></tr>`;
+        showToast(`检索失败: ${err.message}`, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = origText || '🔍 搜索';
+        }
       }
     }
 
-    async function fetchEpisodes() {
-      const tbody = document.getElementById('episodes-table-body');
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">正在加载单集列表...</td></tr>';
-      try {
-        const res = await fetch('/api/episodes?limit=100');
-        if (!res.ok) throw new Error('Failed');
-        const data = await res.json();
-        currentEpisodes = data.episodes || [];
-        renderEpisodesTable(currentEpisodes);
-      } catch (e) {
-        // fallback
-        if (channelsData.length > 0) {
-          onChannelSelect();
-        } else {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--danger); padding: 2rem;">加载失败，请检查网络</td></tr>';
-        }
-      }
+    function resetSearch() {
+      document.getElementById('episode-search').value = '';
+      document.getElementById('channel-filter').value = '';
+      document.getElementById('status-filter').value = '';
+      document.getElementById('limit-filter').value = '20';
+      searchEpisodes();
+    }
+
+    function fetchEpisodes() {
+      return searchEpisodes();
+    }
+
+    function onChannelSelect() {
+      return searchEpisodes();
     }
 
     function renderEpisodesTable(episodes) {
@@ -984,8 +1015,8 @@
             <div class="actions-cell" style="justify-content: flex-end;">
               <button class="btn btn-secondary btn-sm" onclick="openPreview('${ep.id || ep.guid}')">👁 查看</button>
               <button class="btn btn-secondary btn-sm" onclick="triggerTranscribe('${ep.guid}', '${ep.audio_url || ep.audioUrl}', '${ep.title}')">🎙 转录</button>
-              <button class="btn btn-primary btn-sm" onclick="triggerTranslate('${ep.guid}')">🌐 翻译</button>
-              <button class="btn btn-secondary btn-sm" onclick="triggerSummary('${ep.guid}')">📝 摘要</button>
+              <button class="btn btn-primary btn-sm" onclick="triggerTranslate('${ep.guid}', this)">🌐 翻译</button>
+              <button class="btn btn-secondary btn-sm" onclick="triggerSummary('${ep.guid}', this)">📝 摘要 (EN)</button>
             </div>
           </td>
         `;
@@ -1038,9 +1069,14 @@
     }
 
     // 2. 触发翻译
-    async function triggerTranslate(guid) {
+    async function triggerTranslate(guid, btn) {
       if (!guid) return;
       showToast(`正在触发翻译任务: ${guid}...`, 'info');
+      const origText = btn ? btn.innerText : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = '⏳ 提交中...';
+      }
       try {
         const res = await fetch('/api/translate', {
           method: 'POST',
@@ -1059,21 +1095,41 @@
         }
       } catch (err) {
         showToast(err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = origText || '🌐 翻译';
+        }
       }
     }
 
-    // 3. 触发摘要
-    async function triggerSummary(guid) {
+    // 3. 触发摘要 (只生成英文摘要 Summary EN)
+    async function triggerSummary(guid, btn) {
       const ep = currentEpisodes.find(e => e.guid === guid);
-      if (!ep) return;
+      if (!ep) {
+        showToast('未找到该单集', 'error');
+        return;
+      }
       const srt = ep.srt_content;
-      if (!srt || !srt.trim()) {
-        showToast('该单集暂无字幕内容，无法生成摘要', 'error');
+      const lrc = ep.lrc_content;
+      const content = (srt && srt.trim()) || (lrc && lrc.trim());
+      if (!content) {
+        showToast('该单集暂无字幕或歌词内容，无法生成摘要', 'error');
         return;
       }
 
-      const cfg = getLLMConfig();
-      showToast('正在调用 LLM 生成内容摘要...', 'info');
+      // 获取当前填写的摘要配置（若为空则服务端使用 configs 表中配置）
+      const apiKey = document.getElementById('cfg-sum-key')?.value.trim() || '';
+      const apiBase = document.getElementById('cfg-sum-base')?.value.trim() || '';
+      const model = document.getElementById('cfg-sum-model')?.value.trim() || '';
+      const prompt = document.getElementById('cfg-sum-prompt')?.value.trim() || 'Summarize the following transcript concisely in English: ';
+
+      showToast(`正在生成英文摘要: [${ep.title || guid}]...`, 'info');
+      const origText = btn ? btn.innerText : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = '⏳ 生成中...';
+      }
 
       try {
         const res = await fetch('/api/summary', {
@@ -1081,24 +1137,34 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             guid: ep.guid,
-            srtContent: srt,
-            apiKey: cfg.apiKey,
-            apiBase: cfg.apiBase,
-            model: cfg.model
+            srtContent: content,
+            apiKey: apiKey,
+            apiBase: apiBase,
+            model: model,
+            prompt: prompt,
+            force: true
           })
         });
         const data = await res.json();
         if (res.ok && data.summary) {
-          showToast('🎉 摘要已成功生成！', 'success');
+          showToast('🎉 英文摘要已成功生成！', 'success');
           ep.summary = data.summary;
           filterEpisodes();
+          if (currentPreviewEpisode && currentPreviewEpisode.guid === ep.guid) {
+            currentPreviewEpisode.summary = data.summary;
+          }
           openPreview(ep.id || ep.guid);
           switchPreviewType('summary');
         } else {
-          showToast(`❌ 摘要生成失败: ${data.message || ''}`, 'error');
+          showToast(`❌ 摘要生成失败: ${data.message || '未知错误'}`, 'error');
         }
       } catch (err) {
-        showToast(err.message, 'error');
+        showToast(`❌ 网络请求失败: ${err.message}`, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = origText || '📝 摘要 (EN)';
+        }
       }
     }
 
@@ -1125,6 +1191,9 @@
 
       const ep = currentPreviewEpisode;
       const textEl = document.getElementById('modal-text');
+      const actionEl = document.getElementById('modal-tab-action');
+      if (actionEl) actionEl.innerHTML = '';
+
       if (!ep) { textEl.innerText = '未选择单集'; return; }
 
       if (type === 'srt') {
@@ -1133,8 +1202,14 @@
         textEl.innerText = ep.lrc_content || '(暂无 LRC 歌词)';
       } else if (type === 'trans') {
         textEl.innerText = ep.translation || ep.lrc_translation || '(暂无翻译结果)';
+        if (actionEl) {
+          actionEl.innerHTML = `<button class="btn btn-secondary btn-sm" onclick="triggerTranslate('${ep.guid}', this)">🌐 重新翻译</button>`;
+        }
       } else if (type === 'summary') {
-        textEl.innerText = ep.summary || '(暂无内容摘要)';
+        textEl.innerText = ep.summary || '(暂无英文摘要)';
+        if (actionEl) {
+          actionEl.innerHTML = `<button class="btn btn-secondary btn-sm" onclick="triggerSummary('${ep.guid}', this)">📝 ${ep.summary ? '重新生成英文摘要' : '生成英文摘要'}</button>`;
+        }
       }
     }
 

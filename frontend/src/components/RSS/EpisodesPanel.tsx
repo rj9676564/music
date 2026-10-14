@@ -23,7 +23,6 @@ interface EpisodesPanelProps {
   onBack?: () => void;
   onPlayEpisode: (episode: Episode) => void;
   onDownloadEpisode: (episode: Episode, e: React.MouseEvent) => void;
-  onRequestTranscription?: (episode: Episode, e: React.MouseEvent) => void;
 }
 
 /** 秒 -> "1:02:03" / "13:20"，RSS 未提供时长时返回空 */
@@ -49,7 +48,6 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
   onBack,
   onPlayEpisode,
   onDownloadEpisode,
-  onRequestTranscription,
 }) => {
   const actionButtonStyle: React.CSSProperties = {
     background: "transparent",
@@ -151,21 +149,6 @@ export const EpisodesPanel: React.FC<EpisodesPanelProps> = ({
                   display: "flex",
                   gap: "5px",
                 }}>
-                {!episode.srt_content &&
-                  episode.transcription_status !== "pending" &&
-                  episode.transcription_status !== "processing" && (
-                    <button
-                      onClick={(e) => onRequestTranscription?.(episode, e)}
-                      title="请求生成字幕"
-                      style={{
-                        ...actionButtonStyle,
-                        background: "rgba(63, 81, 181, 0.2)",
-                        border: "1px solid rgba(63, 81, 181, 0.4)",
-                        color: "#9fa8da",
-                      }}>
-                      🪄
-                    </button>
-                  )}
                 <button
                   onClick={(e) => onDownloadEpisode(episode, e)}
                   title="缓存音频"

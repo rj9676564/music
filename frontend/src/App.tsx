@@ -49,7 +49,6 @@ function App() {
   const setAudio = usePlayerStore((state) => state.setAudio);
   const setLyrics = usePlayerStore((state) => state.setLyrics);
   const setDuration = usePlayerStore((state) => state.setDuration);
-  const setTranscribing = usePlayerStore((state) => state.setTranscribing);
   const setPlaybackRate = usePlayerStore((state) => state.setPlaybackRate);
   const [isSummarizing, setSummarizing] = useState(false);
 
@@ -71,8 +70,8 @@ function App() {
   const [sentenceLoopEnabled, setSentenceLoopEnabled] = useState(false);
   const [sentenceRepeatCount, setSentenceRepeatCount] = useState(() => {
     const saved = localStorage.getItem("sentence-repeat-count");
-    const parsed = saved ? Number.parseInt(saved, 10) : 3;
-    return Number.isFinite(parsed) ? Math.min(20, Math.max(1, parsed)) : 3;
+    const parsed = saved ? Number.parseInt(saved, 10) : 5;
+    return Number.isFinite(parsed) ? Math.min(20, Math.max(1, parsed)) : 5;
   });
   const [sentenceLoopTargetIndex, setSentenceLoopTargetIndex] = useState<
     number | null
@@ -120,6 +119,17 @@ function App() {
     setSentenceRepeatCount(nextCount);
     localStorage.setItem("sentence-repeat-count", String(nextCount));
     setSentenceLoopCompleted(0);
+  }, []);
+
+  useEffect(() => {
+    const handleCountChanged = (e: any) => {
+      if (typeof e.detail === "number") {
+        setSentenceRepeatCount(e.detail);
+        setSentenceLoopCompleted(0);
+      }
+    };
+    window.addEventListener("sentence-repeat-count-changed", handleCountChanged);
+    return () => window.removeEventListener("sentence-repeat-count-changed", handleCountChanged);
   }, []);
 
   const toggleSentenceLoop = useCallback(() => {
@@ -420,7 +430,19 @@ function App() {
           time >= targetEndTime &&
           sentenceLoopCompleted >= sentenceRepeatCount
         ) {
-          resetSentenceLoop();
+          // 精听训练模式：当前句循环完毕后，自动进入下一句继续精听
+          if (sentenceLoopTargetIndex < currentLyrics.length - 1) {
+            const nextIndex = sentenceLoopTargetIndex + 1;
+            setSentenceLoopTargetIndex(nextIndex);
+            setSentenceLoopCompleted(0);
+            const nextLine = currentLyrics[nextIndex];
+            const targetTime = Math.max(0, nextLine.time - settings.lyricOffset);
+            audio.currentTime = targetTime;
+            setCurrentTime(targetTime);
+            return;
+          } else {
+            resetSentenceLoop();
+          }
         }
       }
       if (index !== usePlayerStore.getState().activeIndex) {
@@ -490,12 +512,46 @@ function App() {
         toggleSentenceLoop();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        resetSentenceLoop();
-        if (audioRef.current) audioRef.current.currentTime += 5;
+        const currentSettings = useSettingsStore.getState();
+        const { lyrics: curLyrics, activeIndex: curIndex } = usePlayerStore.getState();
+        if (currentSettings.arrowKeySeekMode === "sentence" && curLyrics.length > 0 && audioRef.current) {
+          const nextIndex = curIndex < curLyrics.length - 1 ? curIndex + 1 : curIndex;
+          if (nextIndex >= 0 && nextIndex < curLyrics.length) {
+            audioRef.current.currentTime = Math.max(0, curLyrics[nextIndex].time);
+            if (sentenceLoopEnabled) {
+              setSentenceLoopTargetIndex(nextIndex);
+              setSentenceLoopCompleted(0);
+            }
+          }
+        } else {
+          resetSentenceLoop();
+          if (audioRef.current) audioRef.current.currentTime += 5;
+        }
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        resetSentenceLoop();
-        if (audioRef.current) audioRef.current.currentTime -= 5;
+        const currentSettings = useSettingsStore.getState();
+        const { lyrics: curLyrics, activeIndex: curIndex } = usePlayerStore.getState();
+        if (currentSettings.arrowKeySeekMode === "sentence" && curLyrics.length > 0 && audioRef.current) {
+          const curTime = audioRef.current.currentTime;
+          const currentLineTime = curIndex >= 0 && curIndex < curLyrics.length ? curLyrics[curIndex].time : 0;
+          let targetSeekIndex = curIndex;
+          if (curIndex > 0 && curTime - currentLineTime <= 1.5) {
+            targetSeekIndex = curIndex - 1;
+            audioRef.current.currentTime = Math.max(0, curLyrics[curIndex - 1].time);
+          } else if (curIndex >= 0) {
+            targetSeekIndex = curIndex;
+            audioRef.current.currentTime = Math.max(0, currentLineTime);
+          } else {
+            audioRef.current.currentTime = 0;
+          }
+          if (sentenceLoopEnabled && targetSeekIndex >= 0) {
+            setSentenceLoopTargetIndex(targetSeekIndex);
+            setSentenceLoopCompleted(0);
+          }
+        } else {
+          resetSentenceLoop();
+          if (audioRef.current) audioRef.current.currentTime -= 5;
+        }
       } else if (e.key === "[") {
         e.preventDefault();
         const currentRate = usePlayerStore.getState().playbackRate;
@@ -1188,64 +1244,6 @@ function App() {
     setLyrics,
   ]);
 
-  const performTranscription = async (path: string, guid?: string) => {
-    if (isTranscribing) return false;
-    setTranscribing(true);
-    try {
-      const res: any = await window.ipcRenderer?.invoke(
-        "transcribe-audio",
-        path,
-        guid,
-      );
-      if (res.success && res.srtContent) {
-        const parsed = parseSrt(res.srtContent);
-        resetSentenceLoop();
-        setLyrics(parsed);
-
-        // Update local state
-        if (guid) {
-          setPodcastEpisodes((prev) =>
-            prev.map((ep) =>
-              ep.guid === guid ? { ...ep, srt_content: res.srtContent } : ep,
-            ),
-          );
-        }
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error("Transcription error:", e);
-      return false;
-    } finally {
-      setTranscribing(false);
-    }
-  };
-
-  const handleAiTranscribe = async () => {
-    if (!audioPath) {
-      alert("请先打开一个音频文件");
-      return;
-    }
-
-    const currentEp = podcastEpisodes.find((ep) => (ep.audio_url || ep.audioUrl) === audioPath);
-    let targetPath = audioPath.replace("local-file://media", "");
-
-    if (!audioPath.startsWith("local-file://") && currentEp) {
-      if (currentEp.local_audio_path) {
-        targetPath = currentEp.local_audio_path;
-      } else {
-        alert("请先下载该播客到本地再进行转录");
-        return;
-      }
-    }
-
-    const success = await performTranscription(targetPath, currentEp?.guid);
-    if (success) {
-      alert("🎉 转录成功！");
-    } else {
-      alert("转录失败，请检查后端日志");
-    }
-  };
 
   const handleFetchChannel = async (channel: any) => {
     // 1. Abort previous request if exists
@@ -1330,8 +1328,6 @@ function App() {
     setSummarizing(true);
     console.log("🤖 Starting AI Summary request...", {
       guid: musicInfo.guid,
-      model: settings.llmModel,
-      apiBase: settings.llmApiBase,
     });
 
     try {
@@ -1341,9 +1337,6 @@ function App() {
         body: JSON.stringify({
           guid: musicInfo.guid,
           srtContent: srtContent,
-          apiKey: settings.llmApiKey,
-          apiBase: settings.llmApiBase,
-          model: settings.llmModel,
         }),
       });
 
@@ -1400,30 +1393,6 @@ function App() {
     }
   };
 
-  const handleRequestTranscription = async (episode: any, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const res = await axios.post(`${settings.apiUrl}/api/queue-transcription`, {
-        guid: episode.guid,
-        audioUrl: episode.audio_url || episode.audioUrl,
-        title: episode.title,
-      });
-      if (res.data.success) {
-        alert("已加入转录队列 🪄");
-        // 更新本地状态，显示“排队中”
-        setPodcastEpisodes((prev) =>
-          prev.map((ep) =>
-            ep.guid === episode.guid
-              ? { ...ep, transcription_status: "pending" }
-              : ep,
-          ),
-        );
-      }
-    } catch (err) {
-      console.error(err);
-      alert("加入队列失败");
-    }
-  };
 
   const handlePlayPodcast = (episode: any) => {
     const audioUrl = episode.audio_url || episode.audioUrl;
@@ -1490,24 +1459,6 @@ function App() {
         }
       } else {
         setLyrics([]);
-
-        // 自动加入转录队列（后台异步处理）
-        const audioUrl = episode.audio_url || episode.audioUrl;
-        if (audioUrl) {
-          console.log("🎙️ Adding to transcription queue:", episode.title);
-          axios
-            .post(`${settings.apiUrl}/api/queue-transcription`, {
-              guid: episode.guid,
-              audioUrl: audioUrl,
-              title: episode.title,
-            })
-            .then(() => {
-              console.log("✅ Added to transcription queue");
-            })
-            .catch((error: unknown) => {
-              console.error("❌ Failed to queue transcription:", error);
-            });
-        }
       }
 
       // Auto-play after setting audio
@@ -1685,8 +1636,6 @@ function App() {
               embedded
               onClose={() => setViewMode("player")}
               settings={settings}
-              isTranscribing={isTranscribing}
-              onAiTranscribe={handleAiTranscribe}
               onResetLyricWindow={() =>
                 (window as any).ipcRenderer?.invoke("reset-lyric-window")
               }
@@ -1711,7 +1660,6 @@ function App() {
               onBack={() => setViewMode("channels")}
               onPlayEpisode={handlePlayPodcast}
               onDownloadEpisode={handleDownload}
-              onRequestTranscription={handleRequestTranscription}
             />
           </div>
         )}

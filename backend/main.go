@@ -45,6 +45,10 @@ func main() {
 
 		e.Router.GET("/media/{path...}", apis.Static(os.DirFS("./media_cache"), true))
 
+		// 音频代理（小程序只能访问自己的合法域名）
+		registerAudioProxy(app, e)
+		registerImageProxy(app, e)
+
 		// --- API 兼容层 ---
 
 		// 获取频道列表
@@ -140,19 +144,28 @@ func main() {
 			})
 		})
 
-		// 全量/多频道单集查询 (支持聚合子表语言数据：原文语言 + 翻译语言 + 摘要)
+		// 全量/多频道单集查询 (支持聚合子表语言数据：原文语言 + 翻译语言 + 摘要，支持 q 搜索与分页)
 		e.Router.GET("/api/episodes", func(e *core.RequestEvent) error {
 			limitStr := e.Request.URL.Query().Get("limit")
-			limit := 100
+			limit := 20
 			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 300 {
 				limit = l
 			}
 			channelID := strings.TrimSpace(e.Request.URL.Query().Get("channel_id"))
+			query := strings.TrimSpace(e.Request.URL.Query().Get("q"))
+			if query == "" {
+				query = strings.TrimSpace(e.Request.URL.Query().Get("search"))
+			}
+
 			filter := "1=1"
 			params := dbx.Params{}
 			if channelID != "" {
-				filter = "channel_id = {:channelID}"
+				filter += " && channel_id = {:channelID}"
 				params["channelID"] = channelID
+			}
+			if query != "" {
+				filter += " && (title ~ {:query} || guid ~ {:query})"
+				params["query"] = query
 			}
 
 			episodes, err := app.FindRecordsByFilter(
@@ -631,13 +644,15 @@ func main() {
 				APIKey     string `json:"apiKey"`
 				APIBase    string `json:"apiBase"`
 				Model      string `json:"model"`
+				Prompt     string `json:"prompt"`
+				Force      bool   `json:"force"`
 			}
 			if err := e.BindBody(&data); err != nil {
 				return err
 			}
 
 			record, _ := app.FindFirstRecordByData("episodes", "guid", data.GUID)
-			if record != nil && record.GetString("summary") != "" {
+			if !data.Force && record != nil && record.GetString("summary") != "" {
 				return e.JSON(http.StatusOK, map[string]interface{}{
 					"success": true,
 					"summary": record.GetString("summary"),
@@ -645,16 +660,37 @@ func main() {
 				})
 			}
 
-			summary, err := callLLMForSummary(app, data.SrtContent, data.APIKey, data.APIBase, data.Model)
+			// 如果没有传入字幕内容，自动从 episode 记录或 subtitles 表中补充
+			content := strings.TrimSpace(data.SrtContent)
+			if content == "" && record != nil {
+				content = strings.TrimSpace(record.GetString("srt_content"))
+				if content == "" {
+					content = strings.TrimSpace(record.GetString("lrc_content"))
+				}
+			}
+			if content == "" && data.GUID != "" {
+				sub, _ := app.FindFirstRecordByData("subtitles", "guid", data.GUID)
+				if sub != nil {
+					content = strings.TrimSpace(sub.GetString("srt_content"))
+					if content == "" {
+						content = strings.TrimSpace(sub.GetString("lrc_content"))
+					}
+				}
+			}
+			if content == "" {
+				return apis.NewBadRequestError("No subtitles or lyrics content found to summarize", nil)
+			}
+
+			summary, err := callLLMForSummary(app, content, data.APIKey, data.APIBase, data.Model, data.Prompt)
 			if err != nil {
-				return apis.NewBadRequestError("Summary failed", err)
+				return apis.NewBadRequestError(fmt.Sprintf("Summary failed: %v", err), err)
 			}
 
 			if record != nil {
 				record.Set("summary", summary)
-				app.Save(record)
+				_ = app.Save(record)
+				_ = saveSummaryRecord(app, data.GUID, summary, "")
 			}
-			_ = saveSummaryRecord(app, data.GUID, summary, "")
 
 			return e.JSON(http.StatusOK, map[string]interface{}{
 				"success": true,
@@ -1069,10 +1105,13 @@ func failTranscriptionJob(app *pocketbase.PocketBase, guid, errorMessage string)
 	return nil
 }
 
-func callLLMForSummary(app *pocketbase.PocketBase, content, customKey, customBase, customModel string) (string, error) {
+func callLLMForSummary(app *pocketbase.PocketBase, content, customKey, customBase, customModel, customPrompt string) (string, error) {
 	cfg, promptPrefix, err := resolveSummaryLLMConfig(app, customKey, customBase, customModel)
 	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(customPrompt) != "" {
+		promptPrefix = strings.TrimSpace(customPrompt)
 	}
 
 	text := content
@@ -1080,11 +1119,15 @@ func callLLMForSummary(app *pocketbase.PocketBase, content, customKey, customBas
 		text = text[:8000]
 	}
 
-	if promptPrefix == "" {
-		promptPrefix = "Summary: "
+	if promptPrefix == "" || promptPrefix == "Summary: " {
+		promptPrefix = "Summarize the following transcript concisely in English:\n\n"
+	}
+	if !strings.HasSuffix(promptPrefix, "\n") && !strings.HasSuffix(promptPrefix, ": ") && !strings.HasSuffix(promptPrefix, " ") {
+		promptPrefix += "\n\n"
 	}
 
-	return callLLMChat(cfg, "", promptPrefix+text, 60*time.Second)
+	systemPrompt := "You are a professional podcast summary assistant. Always summarize the content concisely in English only (en), capturing the key topics and highlights. Output only the English summary."
+	return callLLMChat(cfg, systemPrompt, promptPrefix+text, 60*time.Second)
 }
 
 // translateInflight 保证同一集同时只有一个翻译任务，
